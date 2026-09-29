@@ -14,6 +14,7 @@
 #include "ui_elements/mouseeventfilter.h"
 #include "updatecheck.h"
 #include "batch/batchditherdialog.h"
+#include "screening/screengeometry.h"
 #include <QTreeWidgetItem>
 #include <QFuture>
 #include <QMainWindow>
@@ -81,8 +82,8 @@ private:
     ImageHashMono imageHashMono;           // caching for already dithered images Mono
     ImageHashColor imageHashColor;         // caching for already dithered images Color
     int current_dither_number = 0;         // number of current ditherer (lower numbers=mono, higher numbers=color)
-    DitherType current_dither_type;        // current dither type:     e.g. error diffusion
-    SubDitherType current_sub_dither_type; // current sub-dither type: e.g. floyd steinberg error diffusion
+    DitherType current_dither_type = ALL;  // current dither type:     e.g. error diffusion
+    SubDitherType current_sub_dither_type = ALL_ALL; // current sub-dither type: e.g. floyd steinberg error diffusion
     // color palette related
     enum QuantizationMethod colorReductionMode;
     enum ColorComparisonMode colorComparisonMode;
@@ -95,6 +96,20 @@ private:
     QString lastSavedPalette;
 
     BytePalette* customPalette = nullptr;
+
+    // screen (output DPI / LPI / dot size), see mainwindow_screen.cpp
+    ScreenGeometry screenGeometry;
+    QComboBox* dpiCombo = nullptr;
+    QCheckBox* lpiCheck = nullptr;
+    QDoubleSpinBox* lpiSpin = nullptr;
+    QCheckBox* dotCheck = nullptr;
+    QDoubleSpinBox* dotSpin = nullptr;
+    QLabel* screenInfoLabel = nullptr;
+    void setupScreenControls();
+    void updateScreenControls();
+    [[nodiscard]] bool screenUsesLpi() const;   // current algorithm has a screen cell (ordered matrix)
+    [[nodiscard]] int screenDotPixels() const;  // coarse grid for the current algorithm (1 = full resolution)
+    OrderedDitherMatrix* applyLpi(OrderedDitherMatrix* matrix, int width, int height) const;
 
     /* methods */
     void setDitherImageMono();      // sets ditherimage in graphicsview and applies user chosen light/dark colors
@@ -211,6 +226,7 @@ private slots:
     void ORD_IGR_cColorValueChangedSlot(double c);
     // dithering
     void forceReDitherSlot() { reDither(true); };
+    void screenSettingsChangedSlot();
     // palette mono
     void monoColorOneChangedSlot(QColor color);
     void monoColorTwoChangedSlot(QColor color);

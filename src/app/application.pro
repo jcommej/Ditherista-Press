@@ -53,6 +53,7 @@ SOURCES += \
     mainwindow_img_adjust.cpp \
     mainwindow_palette.cpp \
     mainwindow_helpers.cpp \
+    mainwindow_screen.cpp \
     treewidget.cpp \
     imagehash/imagehash.cpp \
     imagehash/imagehashcolor.cpp \
@@ -63,7 +64,9 @@ SOURCES += \
     colortree.cpp \
     colortreedelegate.cpp \
     ui_elements/colorcopymenu.cpp \
-    ui_elements/sectioncombobox.cpp
+    ui_elements/sectioncombobox.cpp \
+    screening/cellresample.cpp \
+    screening/matrixstretch.cpp
 
 HEADERS += \
     modernredux/style.h \
@@ -97,7 +100,10 @@ HEADERS += \
     colortreedelegate.h \
     ui_elements/colorcopymenu.h \
     ui_elements/signalblocker.h \
-    ui_elements/sectioncombobox.h
+    ui_elements/sectioncombobox.h \
+    screening/screengeometry.h \
+    screening/cellresample.h \
+    screening/matrixstretch.h
 
 FORMS += \
     mainwindow.ui \

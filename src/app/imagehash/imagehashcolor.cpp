@@ -1,5 +1,7 @@
 #include <QDebug>
 #include "imagehashcolor.h"
+#include "../screening/cellresample.h"
+#include <vector>
 
 void ImageHashColor::setSourceImage(const QImage* inputImage) {
     /* sets the source images */
@@ -71,6 +73,32 @@ void ImageHashColor::adjustSource() {
             ColorImage_set_rgb(sourceImage, y * sourceImage->width + x, br, bg, bb, qAlpha(pixel));
         }
     }
+    clearCoarseImage();  // derived from sourceImage, rebuilt on next use
+}
+
+void ImageHashColor::clearCoarseImage() {
+    ColorImage_free(coarseImage);
+    coarseImage = nullptr;
+}
+
+void ImageHashColor::setCellSize(const int n) {
+    /* grid for the next dither only: cached results keep the grid they were dithered with, so switching between
+     * algorithms that use different grids does not invalidate them */
+    cellSize = n;
+}
+
+ColorImage* ImageHashColor::getDitherSourceImage() {
+    if (cellSize == 1) {
+        return sourceImage;
+    }
+    if (coarseImage != nullptr && coarseCellSize != cellSize) {
+        clearCoarseImage();
+    }
+    if (coarseImage == nullptr) {
+        coarseImage = downsampleColorImage(sourceImage, cellSize);
+        coarseCellSize = cellSize;
+    }
+    return coarseImage;
 }
 
 void ImageHashColor::reset() {
@@ -79,6 +107,7 @@ void ImageHashColor::reset() {
     if(sourceImage != nullptr) {
         ColorImage_free(sourceImage);
     }
+    clearCoarseImage();
 }
 
 ColorImage* ImageHashColor::getSourceImage() const {
@@ -86,10 +115,17 @@ ColorImage* ImageHashColor::getSourceImage() const {
     return sourceImage;
 }
 
-void ImageHashColor::setImageFromDither(int i, const BytePalette* pal, const int* out_buf) {
-    /* sets the dithered image from the ditherer's output buffer */
+void ImageHashColor::setImageFromDither(int i, const BytePalette* pal, const int* dither_buf) {
+    /* sets the dithered image from the ditherer's output buffer, which is getDitherSourceImage()-sized */
     if(outImage.contains(i)) {
         clearDitheredImage(i);
+    }
+    const int* out_buf = dither_buf;
+    std::vector<int> film;
+    if (cellSize > 1) {  // grow each coarse dot back into a cellSize x cellSize block
+        film.resize(static_cast<size_t>(sourceImage->width) * sourceImage->height);
+        upsampleCells(dither_buf, getDitherSourceImage()->width, cellSize, film.data(), sourceImage->width, sourceImage->height);
+        out_buf = film.data();
     }
     outImage[i] = new QImage(sourceImage->width, sourceImage->height, QImage::Format_ARGB32);
     outImage[i]->fill(0);

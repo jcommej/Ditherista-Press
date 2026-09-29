@@ -1,4 +1,6 @@
 #include "imagehashmono.h"
+#include "../screening/cellresample.h"
+#include <vector>
 
 void ImageHashMono::setSourceImage(const QImage* inputImage) {
     /* sets the source images */
@@ -36,6 +38,32 @@ void ImageHashMono::adjustSource() {
             sourceQImage.setPixel(x, y, qRgba(p, p, p, sourceImage->transparency[i]));
         }
     }
+    clearCoarseImage();  // derived from sourceImage, rebuilt on next use
+}
+
+void ImageHashMono::clearCoarseImage() {
+    DitherImage_free(coarseImage);
+    coarseImage = nullptr;
+}
+
+void ImageHashMono::setCellSize(const int n) {
+    /* grid for the next dither only: cached results keep the grid they were dithered with, so switching between
+     * algorithms that use different grids does not invalidate them */
+    cellSize = n;
+}
+
+DitherImage* ImageHashMono::getDitherSourceImage() {
+    if (cellSize == 1) {
+        return sourceImage;
+    }
+    if (coarseImage != nullptr && coarseCellSize != cellSize) {
+        clearCoarseImage();
+    }
+    if (coarseImage == nullptr) {
+        coarseImage = downsampleDitherImage(sourceImage, cellSize);
+        coarseCellSize = cellSize;
+    }
+    return coarseImage;
 }
 
 void ImageHashMono::reset() {
@@ -45,6 +73,7 @@ void ImageHashMono::reset() {
         DitherImage_free(sourceImage);
         DitherImage_free(origLinear);
     }
+    clearCoarseImage();
 }
 
 DitherImage* ImageHashMono::getSourceImage() const {
@@ -52,10 +81,17 @@ DitherImage* ImageHashMono::getSourceImage() const {
     return sourceImage;
 }
 
-void ImageHashMono::setImageFromDither(int i, const uint8_t* out_buf) {
-    /* sets the dithered image from the ditherer's output buffer */
+void ImageHashMono::setImageFromDither(int i, const uint8_t* dither_buf) {
+    /* sets the dithered image from the ditherer's output buffer, which is getDitherSourceImage()-sized */
     if(outImage.contains(i)) {
         clearDitheredImage(i);
+    }
+    const uint8_t* out_buf = dither_buf;
+    std::vector<uint8_t> film;
+    if (cellSize > 1) {  // grow each coarse dot back into a cellSize x cellSize block
+        film.resize(static_cast<size_t>(sourceImage->width) * sourceImage->height);
+        upsampleCells(dither_buf, getDitherSourceImage()->width, cellSize, film.data(), sourceImage->width, sourceImage->height);
+        out_buf = film.data();
     }
     outImage[i] = new QImage(sourceImage->width, sourceImage->height, QImage::Format_ARGB32);
     outImage[i]->fill(qRgb(0, 0, 0));
