@@ -13,7 +13,12 @@
  * are ranks, and interpolating them would change the tone curve). Both axes use the same scale, chosen so that
  * the tile's area equals cellPx^2; for square matrices the period is exactly cellPx on both axes.
  *
+ * angleDegrees rotates the screen: each pixel centre is rotated into the screen's own axes before the lookup,
+ * so the cells line up along that angle - what gives the classic rosette when several inks are printed at
+ * different angles instead of dot-on-dot. At 0 the lookup is the unrotated one, bit for bit.
+ *
  * Returns a new matrix, caller frees it with OrderedDitherMatrix_free. */
-OrderedDitherMatrix* stretchMatrixToCell(const OrderedDitherMatrix* matrix, double cellPx, int width, int height);
+OrderedDitherMatrix* stretchMatrixToCell(const OrderedDitherMatrix* matrix, double cellPx, int width, int height,
+                                         double angleDegrees = 0.0);
 
 #endif // MATRIXSTRETCH_H
