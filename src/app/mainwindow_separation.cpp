@@ -354,9 +354,10 @@ void MainWindow::setupSettingsScroll() {
     QVBoxLayout* column = new QVBoxLayout(settingsPanel);
     column->setContentsMargins(0, 0, 0, 0);
     column->setSpacing(ui->verticalLayout->spacing());
-    for (QWidget* widget : {static_cast<QWidget*>(separationGroup), static_cast<QWidget*>(screenGroup),
+    for (QWidget* widget : {static_cast<QWidget*>(presetGroup), static_cast<QWidget*>(separationGroup),
+                            static_cast<QWidget*>(screenGroup),
                             static_cast<QWidget*>(ui->imageSettingsStackedWidget)}) {
-        ui->verticalLayout->removeWidget(widget);
+        ui->verticalLayout->removeWidget(widget);  // presetGroup was never in it: a no-op there
         column->addWidget(widget);
     }
     settingsScroll = new QScrollArea(ui->imageSettingsContainer);
