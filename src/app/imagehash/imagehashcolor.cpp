@@ -81,22 +81,22 @@ void ImageHashColor::clearCoarseImage() {
     coarseImage = nullptr;
 }
 
-bool ImageHashColor::setCellSize(const int n) {
-    if (n == cellSize) {
-        return false;
-    }
+void ImageHashColor::setCellSize(const int n) {
+    /* grid for the next dither only: cached results keep the grid they were dithered with, so switching between
+     * algorithms that use different grids does not invalidate them */
     cellSize = n;
-    clearCoarseImage();
-    clearAllDitheredImages();
-    return true;
 }
 
 ColorImage* ImageHashColor::getDitherSourceImage() {
     if (cellSize == 1) {
         return sourceImage;
     }
+    if (coarseImage != nullptr && coarseCellSize != cellSize) {
+        clearCoarseImage();
+    }
     if (coarseImage == nullptr) {
         coarseImage = downsampleColorImage(sourceImage, cellSize);
+        coarseCellSize = cellSize;
     }
     return coarseImage;
 }

@@ -317,7 +317,9 @@ void MainWindow::ORD_dither(uint8_t* out_buf, const SubDitherType n) {
             case ORD_IGR: jitter = ui->ORD_IGR_jitter->value(); break;
             default: jitter = ui->ORD_jitter->value(); break;
         }
-        fthread = QtConcurrent::run(ordered_dither, imageHashMono.getDitherSourceImage(), matrix, jitter, out_buf);
+        const DitherImage* image = imageHashMono.getDitherSourceImage();
+        matrix = applyLpi(matrix, image->width, image->height);  // one matrix tile per screen cell
+        fthread = QtConcurrent::run(ordered_dither, image, matrix, jitter, out_buf);
         runDitherThread();
         OrderedDitherMatrix_free(matrix);
     }

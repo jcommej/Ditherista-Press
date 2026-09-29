@@ -46,22 +46,22 @@ void ImageHashMono::clearCoarseImage() {
     coarseImage = nullptr;
 }
 
-bool ImageHashMono::setCellSize(const int n) {
-    if (n == cellSize) {
-        return false;
-    }
+void ImageHashMono::setCellSize(const int n) {
+    /* grid for the next dither only: cached results keep the grid they were dithered with, so switching between
+     * algorithms that use different grids does not invalidate them */
     cellSize = n;
-    clearCoarseImage();
-    clearAllDitheredImages();
-    return true;
 }
 
 DitherImage* ImageHashMono::getDitherSourceImage() {
     if (cellSize == 1) {
         return sourceImage;
     }
+    if (coarseImage != nullptr && coarseCellSize != cellSize) {
+        clearCoarseImage();
+    }
     if (coarseImage == nullptr) {
         coarseImage = downsampleDitherImage(sourceImage, cellSize);
+        coarseCellSize = cellSize;
     }
     return coarseImage;
 }

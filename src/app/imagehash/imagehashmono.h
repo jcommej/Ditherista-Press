@@ -20,7 +20,7 @@ public:
     void setImageFromDither(int i, const uint8_t* out_buf);
     [[nodiscard]] DitherImage* getSourceImage() const;
     [[nodiscard]] DitherImage* getDitherSourceImage();  // what the ditherers read: the source, or its coarse cell grid
-    bool setCellSize(int n);                             // screen cell size in film pixels; true if it changed
+    void setCellSize(int n);                             // dot size in film pixels for the next dither (1 = off)
     void adjustSource();
 
     /* attributes */
@@ -32,8 +32,9 @@ private:
     /* attributes */
     DitherImage* sourceImage = nullptr;  // source with adjustments as DitherImage
     DitherImage* origLinear = nullptr;
-    DitherImage* coarseImage = nullptr;  // sourceImage averaged down to one pixel per screen cell (cached)
-    int cellSize = 1;                    // 1 = no screening, one dot per image pixel
+    DitherImage* coarseImage = nullptr;  // sourceImage averaged down to one pixel per dot (cached)
+    int coarseCellSize = 0;              // cell size coarseImage was built for
+    int cellSize = 1;                    // 1 = one dot per image pixel
     /* methods */
     void reset();
     void clearCoarseImage();

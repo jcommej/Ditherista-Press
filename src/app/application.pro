@@ -65,7 +65,8 @@ SOURCES += \
     colortreedelegate.cpp \
     ui_elements/colorcopymenu.cpp \
     ui_elements/sectioncombobox.cpp \
-    screening/cellresample.cpp
+    screening/cellresample.cpp \
+    screening/matrixstretch.cpp
 
 HEADERS += \
     modernredux/style.h \
@@ -101,7 +102,8 @@ HEADERS += \
     ui_elements/signalblocker.h \
     ui_elements/sectioncombobox.h \
     screening/screengeometry.h \
-    screening/cellresample.h
+    screening/cellresample.h \
+    screening/matrixstretch.h
 
 FORMS += \
     mainwindow.ui \

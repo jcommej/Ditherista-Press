@@ -4,60 +4,69 @@
 
 #include <cmath>
 
-/* How LPI becomes a dither cell
- * -----------------------------
- * A screen of L lines per inch, printed on film at D dots per inch, has cells of D / L device pixels per side:
- * 300 DPI at 45 LPI is 6.67 px per cell, i.e. 25.4 / 45 = 0.564 mm.
+/* Output DPI, LPI and dot size
+ * ----------------------------
+ * Output DPI is the resolution of the film: how many device pixels per inch the pattern is drawn with.
+ * LPI is the physical frequency of the screen, independent of the DPI: one cell is 25.4 / LPI mm
+ * (45 LPI = 0.564 mm). Drawn at D DPI, that cell spans D / LPI pixels - 6.67 px at 300 DPI, 13.33 px at 600,
+ * 26.67 px at 1200. The cell keeps its physical size at any DPI; a higher DPI only draws it more finely.
  *
- * libdither's algorithms place one dot per image pixel. To make dots bigger, the image is averaged down by an
- * integer factor N, dithered at that reduced size, and every resulting dot is replicated as an N x N block of
- * film pixels (see cellresample.h). The dither pattern is computed on the coarse grid, so the dots really are
- * N times larger - this is not a resize of the finished image.
+ * LPI applies to algorithms that have a cell, i.e. ordered dithers built on a threshold matrix. One tile of the
+ * matrix is stretched over one cell (see matrixstretch.h), so the pattern repeats every D / LPI pixels. The
+ * cell size stays fractional: each pixel reads the threshold at its exact position inside its cell. A 6.67 px
+ * cell necessarily covers 6 or 7 whole pixels, but every cell starts within one pixel of k * D / LPI, so the
+ * error never accumulates and the frequency on film is exactly the requested LPI.
+ * Note that some matrices contain several dots per tile (the 45 degree "magic" ones, for instance); they produce
+ * that many dots per cell.
  *
- * N must be a whole number. Using the fractional D / L would make neighbouring dots alternate between
- * floor(D / L) and ceil(D / L) pixels (6, 7, 7, 6, 7, ...), a visible beat pattern on film. N is therefore
- * round(D / L), and the LPI actually produced, D / N, is reported next to the requested one so the difference
- * is never hidden.
+ * Error diffusion, DBS, Riemersma and the other matrix-free algorithms have no cell, so LPI means nothing for
+ * them. They get a dot size instead: the image is averaged down so that one dither pixel covers dotMm on film,
+ * then each dot is replicated back as a block (see cellresample.h). That block must be a whole number of device
+ * pixels, so the size actually produced is reported next to the requested one.
  *
- * With screening disabled N is 1, which bypasses resampling entirely and reproduces the original behaviour
- * bit for bit.
+ * With both options off, every image pixel is one device pixel, as in upstream Ditherista.
  */
 
 inline constexpr double SCREEN_DEFAULT_DPI = 300.0;
 inline constexpr double SCREEN_DEFAULT_LPI = 45.0;
+inline constexpr double SCREEN_DEFAULT_DOT_MM = 0.25;
 inline constexpr double SCREEN_MIN_DPI = 72.0;
 inline constexpr double SCREEN_MAX_DPI = 4800.0;
 inline constexpr double SCREEN_MIN_LPI = 1.0;
 inline constexpr double SCREEN_MAX_LPI = 300.0;
+inline constexpr double SCREEN_MIN_DOT_MM = 0.01;
+inline constexpr double SCREEN_MAX_DOT_MM = 10.0;
 inline constexpr double MM_PER_INCH = 25.4;
 
 struct ScreenGeometry {
-    double dpi = SCREEN_DEFAULT_DPI;  // output (film) resolution
-    double lpi = SCREEN_DEFAULT_LPI;  // requested screen frequency
-    bool enabled = false;             // false: one dot per image pixel, as in upstream Ditherista
+    double dpi = SCREEN_DEFAULT_DPI;        // output (film) resolution
+    double lpi = SCREEN_DEFAULT_LPI;        // screen frequency, for matrix-based algorithms
+    bool lpiEnabled = false;
+    double dotMm = SCREEN_DEFAULT_DOT_MM;   // dot size, for matrix-free algorithms
+    bool dotEnabled = false;
+
+    [[nodiscard]] double cellMm() const {
+        /* physical size of one screen cell - depends on LPI only */
+        return MM_PER_INCH / lpi;
+    }
 
     [[nodiscard]] double pixelsPerCell() const {
-        /* exact, unrounded cell size requested by the user */
+        /* the same cell in device pixels at the output DPI - fractional, never rounded */
         return dpi / lpi;
     }
 
-    [[nodiscard]] int cellSize() const {
-        /* cell size actually used, in whole film pixels */
-        if (!enabled) {
+    [[nodiscard]] int dotPixels() const {
+        /* dot size in whole device pixels (1 = off) */
+        if (!dotEnabled) {
             return 1;
         }
-        const long n = std::lround(pixelsPerCell());
+        const long n = std::lround(dotMm * dpi / MM_PER_INCH);
         return n < 1 ? 1 : static_cast<int>(n);
     }
 
-    [[nodiscard]] double effectiveLpi() const {
-        /* screen frequency actually produced once the cell is snapped to whole pixels */
-        return dpi / cellSize();
-    }
-
-    [[nodiscard]] double cellMm() const {
-        /* physical size of one produced cell */
-        return MM_PER_INCH * cellSize() / dpi;
+    [[nodiscard]] double actualDotMm() const {
+        /* dot size actually produced once snapped to whole pixels */
+        return MM_PER_INCH * dotPixels() / dpi;
     }
 
     [[nodiscard]] double sizeMm(const int pixels) const {

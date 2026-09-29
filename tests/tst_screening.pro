@@ -18,6 +18,7 @@ win32-msvc {
 SOURCES += \
     tst_screening.cpp \
     $$APP/screening/cellresample.cpp \
+    $$APP/screening/matrixstretch.cpp \
     $$APP/imagehash/imagehash.cpp \
     $$APP/imagehash/imagehashmono.cpp \
     $$APP/imagehash/imagehashcolor.cpp
