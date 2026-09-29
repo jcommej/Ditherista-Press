@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "export/filmwriter.h"
+#include "export/psdwriter.h"
+#include <QCheckBox>
 #include "ui_elements/signalblocker.h"
 #include <QComboBox>
 #include <QDir>
@@ -33,7 +35,12 @@ void MainWindow::setupSeparationControls() {
     separationExportCombo->addItem(tr("Separate channels"));
     separationExportCombo->addItem(tr("Simulated composite"));
     separationExportCombo->setToolTip(tr("Save: one 1-bit file per ink (picture_Cyan.tif, ...), or the simulated "
-                                         "print as a single colour image."));
+                                         "print as a single colour image.\nPSD always holds every ink as a spot "
+                                         "channel in one file."));
+    separationPsdCompositeCheck = new QCheckBox(tr("PSD: include simulated print"), separationGroup);
+    separationPsdCompositeCheck->setChecked(true);
+    separationPsdCompositeCheck->setToolTip(tr("On: the PSD's RGB image is the simulated print. Off: it is plain "
+                                               "white and only the spot channels carry the films."));
 
     grid->addWidget(new QLabel(tr("Mode"), separationGroup), 0, 0);
     grid->addWidget(separationModeCombo, 0, 1);
@@ -41,6 +48,7 @@ void MainWindow::setupSeparationControls() {
     grid->addWidget(separationViewCombo, 1, 1);
     grid->addWidget(new QLabel(tr("Save"), separationGroup), 2, 0);
     grid->addWidget(separationExportCombo, 2, 1);
+    grid->addWidget(separationPsdCompositeCheck, 3, 0, 1, 2);
     grid->setColumnStretch(1, 1);
     separationGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
@@ -69,6 +77,7 @@ void MainWindow::separationModeChangedSlot(int) {
     const bool separating = separationMode != SeparationMode::Composite;
     separationViewCombo->setEnabled(separating);
     separationExportCombo->setEnabled(separating);
+    separationPsdCompositeCheck->setEnabled(separating);
     invalidateSeparation();
     if (!firstLoad) {
         imageHashMono.clearAllDitheredImages();  // back to Composite must show the grey dither again
@@ -171,6 +180,19 @@ bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* wr
         return writeTiff(path, image, screenGeometry.dpi, compression, error);
     };
     *written = 0;
+    if (suffix == "psd") {  // one document: the print (or white) plus every ink as a spot channel
+        const std::vector<InkChannel> channels = channelsFor(separationMode);
+        std::vector<PsdSpotChannel> spots;
+        for (size_t i = 0; i < films.size(); i++) {
+            spots.push_back({channels[i].name, channels[i].ink, films[i]});
+        }
+        QImage composite = compositeFromFilms(films, separationMode);
+        if (!separationPsdCompositeCheck->isChecked()) {
+            composite.fill(Qt::white);
+        }
+        *written = writePsd(fileName, composite, spots, screenGeometry.dpi, error) ? 1 : 0;
+        return *written == 1;
+    }
     if (separationExportCombo->currentIndex() == 1) {
         *written = write(fileName, compositeFromFilms(films, separationMode)) ? 1 : 0;
         return *written == 1;

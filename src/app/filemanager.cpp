@@ -39,12 +39,12 @@ QString FileManager::fileSave(const bool saveAs, QString suggestedFileName) {
     }
     if (currentFileName.isEmpty()) {
         suggestedFileName += currentFilter == pngFilter() || currentFilter.isEmpty() ? ".png"
-                           : currentFilter == bmpFilter() ? ".bmp" : ".tif";
+                           : currentFilter == bmpFilter() ? ".bmp" : currentFilter == psdFilter() ? ".psd" : ".tif";
         suggestedFileName = fileIoLocation + QDir::separator() + suggestedFileName;
     } else {
         suggestedFileName = currentFileName;
     }
-    const QString filters = QStringList({pngFilter(), tiffFilter(), tiffPackBitsFilter(), bmpFilter()}).join(";;");
+    const QString filters = QStringList({pngFilter(), tiffFilter(), tiffPackBitsFilter(), bmpFilter(), psdFilter()}).join(";;");
     QString selected = currentFilter.isEmpty() ? pngFilter() : currentFilter;
     const QString fileName = QFileDialog::getSaveFileName((QWidget*)parent(),
                                                     tr("Save Film"), suggestedFileName,
@@ -60,6 +60,10 @@ QString FileManager::fileSave(const bool saveAs, QString suggestedFileName) {
 
 QString FileManager::pngFilter() {
     return tr("PNG (*.png)");
+}
+
+QString FileManager::psdFilter() {
+    return tr("Photoshop PSD, separations as spot channels (*.psd)");
 }
 
 QString FileManager::bmpFilter() {
