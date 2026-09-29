@@ -12,14 +12,15 @@ $build = Join-Path $PSScriptRoot "build"
 New-Item -ItemType Directory -Force $build | Out-Null
 Push-Location $build
 try {
-    & qmake "$PSScriptRoot\tst_screening.pro" CONFIG+=release
+    & qmake "$PSScriptRoot\tests.pro" CONFIG+=release
     if ($LASTEXITCODE -ne 0) { throw "qmake failed" }
     & mingw32-make -s
     if ($LASTEXITCODE -ne 0) { throw "build failed" }
-    # report goes through a file: QtTest's stdout is not always visible from PowerShell hosts
-    & ".\release\tst_screening.exe" -o "results.txt,txt"
+    Remove-Item results_*.txt -ErrorAction SilentlyContinue
+    # reports go through files: QtTest's stdout is not always visible from PowerShell hosts
+    & ".\release\tests.exe"
     $code = $LASTEXITCODE
-    Get-Content "results.txt"
+    Get-ChildItem results_*.txt | ForEach-Object { Get-Content $_ }
     exit $code
 } finally {
     Pop-Location

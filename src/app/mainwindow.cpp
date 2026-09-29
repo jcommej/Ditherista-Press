@@ -40,6 +40,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     /* Constructor */
     uiSetup();  // Qt GUI setup
     setupScreenControls();  // output DPI / LPI panel
+    setupToneControls();    // shadows / midtones / highlights / blur / denoise
     // Ditherista component setup
     fileManager.setParent(this);
     helpWindow = new HelpWindow(this);
@@ -366,6 +367,7 @@ void MainWindow::loadImage(const QImage* image) {
     resetBrightnessButtonColorClickedSlot();
     resetGammaButtonColorClickedSlot();
     resetSaturationButtonColorClickedSlot();
+    resetToneControls();  // the image caches reset the values themselves in setSourceImage
 
     if(firstLoad) { // on first load, we're in mono dithering mode
         firstLoad = false;

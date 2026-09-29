@@ -54,6 +54,9 @@ SOURCES += \
     mainwindow_palette.cpp \
     mainwindow_helpers.cpp \
     mainwindow_screen.cpp \
+    mainwindow_tone.cpp \
+    adjust/filters.cpp \
+    adjust/tonecurve.cpp \
     treewidget.cpp \
     imagehash/imagehash.cpp \
     imagehash/imagehashcolor.cpp \
@@ -103,7 +106,9 @@ HEADERS += \
     ui_elements/sectioncombobox.h \
     screening/screengeometry.h \
     screening/cellresample.h \
-    screening/matrixstretch.h
+    screening/matrixstretch.h \
+    adjust/filters.h \
+    adjust/tonecurve.h
 
 FORMS += \
     mainwindow.ui \

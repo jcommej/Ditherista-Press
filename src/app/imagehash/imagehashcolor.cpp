@@ -1,6 +1,9 @@
 #include <QDebug>
 #include "imagehashcolor.h"
 #include "../screening/cellresample.h"
+#include "../adjust/filters.h"
+#include "../adjust/tonecurve.h"
+#include <cmath>
 #include <vector>
 
 void ImageHashColor::setSourceImage(const QImage* inputImage) {
@@ -17,18 +20,62 @@ void ImageHashColor::setSourceImage(const QImage* inputImage) {
     contrast = DEFAULT_COLOR_CONTRAST_ADJUST;
     gamma = DEFAULT_COLOR_GAMMA_ADJUST;
     saturation = DEFAULT_COLOR_SATURATION_ADJUST;
+    shadows = midtones = highlights = 0;
+    blur = denoise = 0;
+    filteredQImage = QImage();  // belongs to the previous image
+    filteredBlur = filteredDenoise = 0;
     adjustSource();
 }
 
+const QImage& ImageHashColor::filteredSource() {
+    /* origQImage after denoise and blur, per channel. Neutral filters return origQImage itself, untouched. The
+     * result is cached so that moving a tonal slider does not re-run the filters. */
+    if (blur == 0 && denoise == 0) {
+        filteredQImage = QImage();
+        filteredBlur = filteredDenoise = 0;
+        return origQImage;
+    }
+    if (filteredQImage.isNull() || filteredBlur != blur || filteredDenoise != denoise) {
+        const int w = origQImage.width();
+        const int h = origQImage.height();
+        filteredQImage = origQImage.copy();  // keeps alpha as is
+        for (const int shift : {16, 8, 0}) {  // red, green, blue in an ARGB32 word
+            std::vector<float> plane(static_cast<size_t>(w) * h);
+            for (int y = 0; y < h; y++) {
+                const QRgb* row = reinterpret_cast<const QRgb*>(origQImage.constScanLine(y));
+                for (int x = 0; x < w; x++) {
+                    plane[static_cast<size_t>(y) * w + x] = ((row[x] >> shift) & 0xff) / 255.0f;  // sRGB is perceptual
+                }
+            }
+            guidedDenoise(plane, w, h, denoise);
+            gaussianBlur(plane, w, h, blur / 10.0);
+            for (int y = 0; y < h; y++) {
+                QRgb* row = reinterpret_cast<QRgb*>(filteredQImage.scanLine(y));
+                for (int x = 0; x < w; x++) {
+                    const QRgb v = static_cast<QRgb>(std::lround(plane[static_cast<size_t>(y) * w + x] * 255.0f));
+                    row[x] = (row[x] & ~(0xffu << shift)) | (v << shift);
+                }
+            }
+        }
+        filteredBlur = blur;
+        filteredDenoise = denoise;
+    }
+    return filteredQImage;
+}
+
 void ImageHashColor::adjustSource() {
+    /* applies image adjustments: denoise and blur, then gamma, contrast, brightness, saturation, then the tonal
+     * zones */
     double dBrightness = (double)brightness / 100.0;
     double dContrast = (double)(contrast / 100.0) + 1.0;
     double dGamma = 1.0 / ((double)(gamma / 100.0) + 1.0);
     double dSaturation = (double)(saturation / 100.0) + 1.0;
     double remove_gamma_exp = 1.0 / 2.2;
+    const QImage& base = filteredSource();
+    const ToneCurve curve(shadows, midtones, highlights);
     for (int y = 0; y < sourceImage->height; y++) {
         for (int x = 0; x < sourceImage->width; x++) {
-            const QRgb pixel = origQImage.pixel(x, y);
+            const QRgb pixel = base.pixel(x, y);
             // convert from sRGB to linear
             double fr = (double)qRed(pixel) / 255.0;
             double fg = (double)qGreen(pixel) / 255.0;
@@ -66,6 +113,11 @@ void ImageHashColor::adjustSource() {
             fr = pow(fr, 2.2);
             fg = pow(fg, 2.2);
             fb = pow(fb, 2.2);
+            if (!curve.isIdentity()) {  // tonal zones, on the final sRGB values like a Photoshop RGB curve
+                fr = curve.apply(fr);
+                fg = curve.apply(fg);
+                fb = curve.apply(fb);
+            }
             uint8_t br = (uint8_t)(fr * 255.0);
             uint8_t bg = (uint8_t)(fg * 255.0);
             uint8_t bb = (uint8_t)(fb * 255.0);

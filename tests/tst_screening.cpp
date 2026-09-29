@@ -320,5 +320,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(TestScreening)
+QObject* newTestScreening() { return new TestScreening; }
 #include "tst_screening.moc"

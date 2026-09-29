@@ -16,6 +16,8 @@
 #include "batch/batchditherdialog.h"
 #include "screening/screengeometry.h"
 #include <QTreeWidgetItem>
+#include <functional>
+#include <vector>
 #include <QFuture>
 #include <QMainWindow>
 #include <QtNetwork/QNetworkAccessManager>
@@ -110,6 +112,19 @@ private:
     [[nodiscard]] bool screenUsesLpi() const;   // current algorithm has a screen cell (ordered matrix)
     [[nodiscard]] int screenDotPixels() const;  // coarse grid for the current algorithm (1 = full resolution)
     OrderedDitherMatrix* applyLpi(OrderedDitherMatrix* matrix, int width, int height) const;
+
+    // shadows / midtones / highlights / blur / denoise rows, see mainwindow_tone.cpp
+    struct AdjustControl {
+        QSlider* slider;
+        QDoubleSpinBox* spin;
+    };
+    std::vector<AdjustControl> adjustControls;
+    QIcon adjustResetIcon;
+    void setupToneControls();
+    void resetToneControls();
+    void addAdjustRow(QGridLayout* grid, int row, const QString& label, const QString& toolTip, int minimum,
+                      int maximum, double scale, int decimals,
+                      const std::function<void(int)>& apply);
 
     /* methods */
     void setDitherImageMono();      // sets ditherimage in graphicsview and applies user chosen light/dark colors

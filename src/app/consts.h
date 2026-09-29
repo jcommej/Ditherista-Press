@@ -29,8 +29,9 @@
 // 'Input Image Settings' group box at right bottom (ui->imageSettingsStackedWidget)
 #define IMAGE_SETTINGS_STACKED_WIDGET_MONO_INDEX 0     // mono image adjustments
 #define IMAGE_SETTINGS_STACKED_WIDGET_COLOR_INDEX 1    // color image adjustments
-#define IMAGE_SETTINGS_STACKED_WIDGET_MONO_HEIGHT 130  // for mono image adjustments
-#define IMAGE_SETTINGS_STACKED_WIDGET_COLOR_HEIGHT 156 // for color image adjustments
+// +5 rows of ~25 px for shadows / midtones / highlights / blur / denoise (mainwindow_tone.cpp)
+#define IMAGE_SETTINGS_STACKED_WIDGET_MONO_HEIGHT (130 + 5 * 25)  // for mono image adjustments
+#define IMAGE_SETTINGS_STACKED_WIDGET_COLOR_HEIGHT (156 + 5 * 25) // for color image adjustments
 
 // Min/max colors for reduced palette
 #define PALETTE_MIN_COLORS 2
