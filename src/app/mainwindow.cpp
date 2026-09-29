@@ -44,6 +44,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     setupScreenControls();  // output DPI / LPI panel
     setupSeparationControls();  // CMYK / RGB films, above the Screen panel
     setupToneControls();    // shadows / midtones / highlights / blur / denoise
+    setupPresetControls();  // Load / Save / Delete, at the top of the settings
     setupSettingsScroll();  // after every panel exists: they move into one scroll area
     // the two panels above take ~250 px from the ditherer list: open taller than the minimum when the screen allows
     resize(width(), std::min(DEFAULT_WINDOW_HEIGHT, screen()->availableGeometry().height() - 40));
@@ -238,7 +239,7 @@ void MainWindow::reDither(const bool force) {
     /* dithers the loaded image with the currently selected ditherer. if the image already exists in the imagehash
 	 * then the image is retrieved from the hash. The force parameter forces a re-dither, even if the dithered image
 	 * exists in the hash. */
-    if(isDithering)
+    if(isDithering || applyingPreset)  // a preset renders once, after setting everything
         return;
     setMouseBusy(true);
     if(force) {

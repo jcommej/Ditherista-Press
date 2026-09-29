@@ -16,6 +16,9 @@
 #include "batch/batchditherdialog.h"
 #include "screening/screengeometry.h"
 #include "screening/separation.h"
+#include "presets/presetstore.h"
+#include <QJsonObject>
+#include <memory>
 #include <QTreeWidgetItem>
 #include <functional>
 #include <map>
@@ -151,6 +154,16 @@ private:
     [[nodiscard]] const ChannelSettings* renderChannelSettings() const;
     void rebuildChannelRows();
     void updateChannelRowsEnabled();
+    // presets, see mainwindow_presets.cpp
+    std::unique_ptr<PresetStore> presetStore;
+    QGroupBox* presetGroup = nullptr;
+    QComboBox* presetCombo = nullptr;
+    bool applyingPreset = false;  // holds reDither while a preset sets controls one by one
+    void setupPresetControls();
+    void refreshPresetList(const QString& select);
+    [[nodiscard]] QJsonObject capturePreset() const;
+    void applyPreset(const QJsonObject& preset);
+    void applyPresetPalette(const QJsonObject& palette);
     // settings panels in a scroll area, so the ditherer list keeps its room on small screens
     QGroupBox* screenGroup = nullptr;
     QScrollArea* settingsScroll = nullptr;
@@ -300,6 +313,8 @@ private slots:
     void forceReDitherSlot() { reDither(true); };
     void screenSettingsChangedSlot();
     void separationModeChangedSlot(int);
+    void savePresetNamed(const QString& name);
+    void loadPresetNamed(const QString& name);
     void separationViewChangedSlot(int);
     void outputDpiEditedSlot();
     void printWidthEditedSlot(double widthMm);

@@ -23,6 +23,8 @@ SOURCES += \
     tst_preview.cpp \
     tst_separation.cpp \
     tst_psd.cpp \
+    tst_presets.cpp \
+    $$APP/presets/presetstore.cpp \
     $$APP/export/psdwriter.cpp \
     $$APP/screening/separation.cpp \
     $$APP/viewport/graphicsview.cpp \

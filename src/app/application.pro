@@ -60,6 +60,8 @@ SOURCES += \
     adjust/tonecurve.cpp \
     export/filmwriter.cpp \
     export/psdwriter.cpp \
+    presets/presetstore.cpp \
+    mainwindow_presets.cpp \
     treewidget.cpp \
     imagehash/imagehash.cpp \
     imagehash/imagehashcolor.cpp \
@@ -115,7 +117,8 @@ HEADERS += \
     adjust/filters.h \
     adjust/tonecurve.h \
     export/filmwriter.h \
-    export/psdwriter.h
+    export/psdwriter.h \
+    presets/presetstore.h
 
 FORMS += \
     mainwindow.ui \
