@@ -222,6 +222,8 @@ bool MainWindow::applyOutputSize(const double dpi, const double widthMm, const d
     ui->resolutionLabel->setText(QString("%1 × %2").arg(size.width()).arg(size.height()));
     imageHashMono.setSourceImage(&working, true);   // true: same picture, adjustments are kept
     ui->graphicsView->setOriginalImage(working);
+    previewImage = working;
+    invalidateSeparation();
     imageHashColor.setSourceImage(&working, true);
     generateCachedPalette(false, false, true);
     ui->graphicsView->setSourceImageMono(imageHashMono.getSourceQImage());
@@ -281,6 +283,7 @@ void MainWindow::screenSettingsChangedSlot() {
     screenGeometry.dotEnabled = dotCheck->isChecked();
     screenGeometry.dotMm = dotSpin->value();
     updateScreenControls();
+    invalidateSeparation();
     if (!firstLoad) {
         imageHashMono.clearAllDitheredImages();
         imageHashColor.clearAllDitheredImages();

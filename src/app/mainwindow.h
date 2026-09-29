@@ -15,6 +15,7 @@
 #include "updatecheck.h"
 #include "batch/batchditherdialog.h"
 #include "screening/screengeometry.h"
+#include "screening/separation.h"
 #include <QTreeWidgetItem>
 #include <functional>
 #include <vector>
@@ -127,6 +128,24 @@ private:
     [[nodiscard]] bool screenUsesLpi() const;   // current algorithm has a screen cell (ordered matrix)
     [[nodiscard]] int screenDotPixels() const;  // coarse grid for the current algorithm (1 = full resolution)
     OrderedDitherMatrix* applyLpi(OrderedDitherMatrix* matrix, int width, int height) const;
+
+    // colour separation (Mono tab), see mainwindow_separation.cpp
+    SeparationMode separationMode = SeparationMode::Composite;
+    QGroupBox* separationGroup = nullptr;
+    QComboBox* separationModeCombo = nullptr;
+    QComboBox* separationViewCombo = nullptr;
+    QComboBox* separationExportCombo = nullptr;
+    std::vector<QImage> separationFilms;  // preview films, one per ink
+    int separationFilmsFor = -1;          // dither number they were rendered with; -1 = stale
+    QImage previewImage;                  // the picture at the preview's resolution, before any adjustment
+    void setupSeparationControls();
+    [[nodiscard]] bool separationActive() const;  // Mono tab with CMYK or RGB selected
+    void invalidateSeparation() { separationFilmsFor = -1; }
+    std::vector<QImage> renderSeparation(const QImage& working, double dpi, double upscale);
+    [[nodiscard]] QImage separationView(const std::vector<QImage>& films) const;
+    void showSeparation();
+    std::vector<QImage> separationFilmsAtOutput();
+    bool saveSeparation(const QString& fileName, QString* error, int* written);
 
     // shadows / midtones / highlights / blur / denoise rows, see mainwindow_tone.cpp
     struct AdjustControl {
@@ -258,6 +277,8 @@ private slots:
     // dithering
     void forceReDitherSlot() { reDither(true); };
     void screenSettingsChangedSlot();
+    void separationModeChangedSlot(int);
+    void separationViewChangedSlot(int);
     void outputDpiEditedSlot();
     void printWidthEditedSlot(double widthMm);
     void printHeightEditedSlot(double heightMm);

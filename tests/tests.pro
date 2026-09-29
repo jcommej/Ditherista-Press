@@ -21,6 +21,8 @@ SOURCES += \
     tst_adjust.cpp \
     tst_export.cpp \
     tst_preview.cpp \
+    tst_separation.cpp \
+    $$APP/screening/separation.cpp \
     $$APP/viewport/graphicsview.cpp \
     $$APP/viewport/graphicspixmapitem.cpp \
     $$APP/export/filmwriter.cpp \

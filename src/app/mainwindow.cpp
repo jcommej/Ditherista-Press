@@ -41,6 +41,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     /* Constructor */
     uiSetup();  // Qt GUI setup
     setupScreenControls();  // output DPI / LPI panel
+    setupSeparationControls();  // CMYK / RGB films, above the Screen panel
     setupToneControls();    // shadows / midtones / highlights / blur / denoise
     // the two panels above take ~250 px from the ditherer list: open taller than the minimum when the screen allows
     resize(width(), std::min(DEFAULT_WINDOW_HEIGHT, screen()->availableGeometry().height() - 40));
@@ -90,6 +91,7 @@ void MainWindow::tabWidgetChangedSlot(int index) {
     // TODO we may not need the lastTabIndex anymore (is lastTabIndex redundant?)
     if (index < TAB_INDEX_PALETTE) {
         lastTabIndex = index; // holds dither tab was last active (color or mono)
+        separationGroup->setVisible(index == TAB_INDEX_MONO);  // separation uses the mono ditherers
         if (index == TAB_INDEX_MONO) {      // trigger a re-dither for the active ditherer in the tab we're switching to
             ui->imageSettingsStackedWidget->setCurrentIndex(0);
             ui->graphicsView->showSourceMono(ui->showOriginalMono->checkState() == Qt::Checked);
@@ -243,7 +245,12 @@ void MainWindow::reDither(const bool force) {
             imageHashColor.clearDitheredImage(current_dither_number);
         }
     }
-    if (current_dither_number < COLOR_DITHER_START) { // MONO DITHERING
+    if (current_dither_number < COLOR_DITHER_START && separationActive()) {  // one film per ink
+        if (force) {
+            invalidateSeparation();
+        }
+        showSeparation();
+    } else if (current_dither_number < COLOR_DITHER_START) { // MONO DITHERING
         if(!imageHashMono.hasDitheredImage(current_dither_number)) {  // if dithered image isn't cached, then (re)compute it
             ditherMonoInto(imageHashMono);
             ui->treeWidgetMono->setCurrentItemDitherFlag(true);
@@ -312,6 +319,9 @@ QImage MainWindow::renderFilm() {
      * (large films, see screengeometry.h) the current settings are rendered again at full resolution, into
      * caches that live only for this call so their memory is returned as soon as the file is written */
     const bool mono = lastTabIndex == TAB_INDEX_MONO;
+    if (separationActive()) {  // the simulated print or the film shown in the View selector
+        return separationView(separationFilmsAtOutput());
+    }
     if (renderDpi >= screenGeometry.dpi) {
         return mono ? *imageHashMono.getDitheredImage(current_dither_number)
                     : *imageHashColor.getDitheredImage(current_dither_number);
@@ -358,6 +368,19 @@ void MainWindow::saveFile(const QString &fileName) {
     if (renderDpi < screenGeometry.dpi) {
         notification->showText(tr("rendering the film at %1 DPI...").arg(screenGeometry.dpi, 0, 'f', 0), 60000);
         QApplication::processEvents();
+    }
+    if (separationActive()) {
+        QString error;
+        int written = 0;
+        const bool ok = saveSeparation(fileName, &error, &written);
+        setMouseBusy(false);
+        if (ok) {
+            notification->showText(tr("%1 file(s) saved at %2 DPI").arg(written).arg(screenGeometry.dpi, 0, 'f', 0), 3000);
+        } else {
+            notification->showText("<font color=#ec6a5e>" + tr("ERROR") + "</font>\n" +
+                tr("failed to save file") + "\n" + error, 3000);
+        }
+        return;
     }
     const QImage film = toFilmImage(renderFilm());  // 1-bit when the result is pure black and white
     QString error;
@@ -424,6 +447,8 @@ void MainWindow::loadImage(const QImage* image) {
     // set mono image
     imageHashMono.setSourceImage(&working);
     ui->graphicsView->setOriginalImage(working);  // hold-to-compare shows this, untouched
+    previewImage = working;
+    invalidateSeparation();
     ui->treeWidgetMono->clearAllDitherFlags();
     ui->showOriginalMono->setCheckState(Qt::Unchecked);
     ui->graphicsView->setSourceImageMono(imageHashMono.getSourceQImage());
