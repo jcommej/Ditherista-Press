@@ -45,14 +45,31 @@ inline constexpr double MM_PER_INCH = 25.4;
  * on film. On load the Output DPI starts at the file's own DPI, which means no resampling at all: an untouched
  * image goes through the pipeline pixel for pixel, as in upstream Ditherista.
  *
- * The working image is capped: every stage keeps full-resolution buffers (double-precision grey, the dithered
- * result, the on-screen copy), around 75 bytes per pixel in total. */
-inline constexpr long long WORKING_MAX_PIXELS = 80'000'000;
+ * Preview and film
+ * ----------------
+ * The on-screen preview keeps several full buffers per pixel (double-precision grey, the colour version, the
+ * dithered results, the display copy): about 90 bytes per pixel. A 1 x 1 m film at 300 DPI (140 MP) would need
+ * 12 GB and seconds per slider move. So the preview is rendered at a reduced DPI whenever the film exceeds
+ * PREVIEW_MAX_PIXELS, and export renders again at the output DPI with only the buffers one dither needs.
+ * Everything the user sets is physical - print size, LPI, dot size, blur in mm - so both renders show the same
+ * pattern; the preview simply draws it with fewer pixels. EXPORT_MAX_PIXELS bounds that render (~45 bytes per
+ * pixel in black and white, ~60 in colour). */
+inline constexpr double PREVIEW_MAX_PIXELS = 16'000'000;
+inline constexpr long long EXPORT_MAX_PIXELS = 250'000'000;
 
 inline int pixelsFor(const double mm, const double dpi) {
     /* pixel count of `mm` at `dpi` */
     const long n = std::lround(mm * dpi / MM_PER_INCH);
     return n < 1 ? 1 : static_cast<int>(n);
+}
+
+inline double previewDpiFor(const double dpi, const double widthMm, const double heightMm) {
+    /* the output DPI when the film fits the preview budget, else the DPI that brings it down to that budget */
+    const double pixels = static_cast<double>(pixelsFor(widthMm, dpi)) * pixelsFor(heightMm, dpi);
+    if (pixels <= PREVIEW_MAX_PIXELS) {
+        return dpi;
+    }
+    return dpi * std::sqrt(PREVIEW_MAX_PIXELS / pixels) * 0.999;  // margin for pixelsFor's rounding
 }
 
 struct ScreenGeometry {

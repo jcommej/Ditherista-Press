@@ -85,8 +85,7 @@ void MainWindow::setupScreenControls() {
     dotSpin->setKeyboardTracking(false);
     dotSpin->setValue(SCREEN_DEFAULT_DOT_MM);
 
-    screenInfoLabel = new QLabel(group);
-    screenInfoLabel->setWordWrap(true);
+    screenInfoLabel = new QLabel(group);  // short lines, no wrapping: its height must be known to the layout
 
     grid->addWidget(new QLabel(tr("Print size"), group), 0, 0);
     grid->addWidget(sizeRow, 0, 1);
@@ -99,6 +98,7 @@ void MainWindow::setupScreenControls() {
     grid->addWidget(screenInfoLabel, 4, 0, 1, 2);
     grid->setColumnStretch(1, 1);
 
+    group->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);  // the ditherer list gives way, not this
     const int index = ui->verticalLayout->indexOf(ui->imageSettingsStackedWidget);
     ui->verticalLayout->insertWidget(index, group, 0);
 
@@ -128,8 +128,11 @@ bool MainWindow::screenUsesLpi() const {
 }
 
 int MainWindow::screenDotPixels() const {
-    /* coarse grid for the current algorithm: matrix algorithms always dither at full resolution */
-    return screenUsesLpi() ? 1 : screenGeometry.dotPixels();
+    /* coarse grid for the current algorithm at the resolution being rendered (preview or film): matrix
+     * algorithms always dither at full resolution */
+    ScreenGeometry g = screenGeometry;
+    g.dpi = renderDpi;
+    return screenUsesLpi() ? 1 : g.dotPixels();
 }
 
 OrderedDitherMatrix* MainWindow::applyLpi(OrderedDitherMatrix* matrix, const int width, const int height) const {
@@ -137,7 +140,8 @@ OrderedDitherMatrix* MainWindow::applyLpi(OrderedDitherMatrix* matrix, const int
     if (matrix == nullptr || !screenGeometry.lpiEnabled || !screenUsesLpi()) {
         return matrix;
     }
-    OrderedDitherMatrix* stretched = stretchMatrixToCell(matrix, screenGeometry.pixelsPerCell(), width, height);
+    // cell in pixels of the image being rendered: fewer in a reduced preview, same size on film
+    OrderedDitherMatrix* stretched = stretchMatrixToCell(matrix, renderDpi / screenGeometry.lpi, width, height);
     OrderedDitherMatrix_free(matrix);
     return stretched;
 }
@@ -165,49 +169,56 @@ QImage MainWindow::adoptNativeImage(const QImage* image) {
     printWidthSpin->setEnabled(true);
     printHeightSpin->setEnabled(true);
 
-    const QSize size(pixelsFor(printWidthMm, dpi), pixelsFor(printHeightMm, dpi));
-    if (size == nativeImage.size() || static_cast<long long>(size.width()) * size.height() > WORKING_MAX_PIXELS) {
-        applyFilterScale(nativeImage.size());
+    renderDpi = previewDpiFor(dpi, printWidthMm, printHeightMm);
+    const QSize size(pixelsFor(printWidthMm, renderDpi), pixelsFor(printHeightMm, renderDpi));
+    applyFilterScale(size, renderDpi);
+    if (size == nativeImage.size()) {
         return nativeImage;
     }
-    applyFilterScale(size);  // a clamped or non-square file resolution: resample once to square pixels
+    // a clamped or non-square file resolution: resample once to square pixels
     return nativeImage.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 }
 
-void MainWindow::applyFilterScale(const QSize& working) {
-    /* blur is set in mm and denoise in source pixels; both caches need the working resolution to convert */
-    const double pixelsPerMm = screenGeometry.dpi / MM_PER_INCH;
+void MainWindow::applyFilterScale(const QSize& working, const double dpi) {
+    /* blur is set in mm and denoise in source pixels; the preview caches need their resolution to convert */
+    const double pixelsPerMm = dpi / MM_PER_INCH;
     const double upscale = static_cast<double>(working.width()) / nativeImage.width();
     imageHashMono.pixelsPerMm = imageHashColor.pixelsPerMm = pixelsPerMm;
     imageHashMono.denoiseScale = imageHashColor.denoiseScale = upscale;
 }
 
 bool MainWindow::applyOutputSize(const double dpi, const double widthMm, const double heightMm) {
-    /* resamples the picture to widthMm x heightMm at dpi, keeping every adjustment. Returns false, changing
-     * nothing, if the result would exceed WORKING_MAX_PIXELS */
-    const QSize size(pixelsFor(widthMm, dpi), pixelsFor(heightMm, dpi));
-    const long long pixels = static_cast<long long>(size.width()) * size.height();
-    if (pixels > WORKING_MAX_PIXELS) {
-        notification->showText("<font color=#ec6a5e>" + tr("TOO LARGE") + "</font>\n" +
-            tr("%1 × %2 px (%3 MP) at %4 DPI, max %5 MP.\nReduce the print size or the DPI.")
-                .arg(size.width()).arg(size.height()).arg(pixels / 1e6, 0, 'f', 0).arg(dpi, 0, 'f', 0)
-                .arg(WORKING_MAX_PIXELS / 1'000'000), 4000);
+    /* sets the film to widthMm x heightMm at dpi and resamples the preview for it, keeping every adjustment.
+     * Returns false, changing nothing, if the film would exceed EXPORT_MAX_PIXELS */
+    if (isDithering) {
+        // runDitherThread keeps processing events while a ditherer runs; resampling now would free the image it
+        // is writing into. User input is blocked during that time, but nothing else guarantees it.
         return false;
     }
-    const double previousDpi = screenGeometry.dpi;
+    const QSize film(pixelsFor(widthMm, dpi), pixelsFor(heightMm, dpi));
+    const long long pixels = static_cast<long long>(film.width()) * film.height();
+    if (pixels > EXPORT_MAX_PIXELS) {
+        notification->showText("<font color=#ec6a5e>" + tr("TOO LARGE") + "</font>\n" +
+            tr("%1 × %2 px (%3 MP) at %4 DPI, max %5 MP.\nReduce the print size or the DPI.")
+                .arg(film.width()).arg(film.height()).arg(pixels / 1e6, 0, 'f', 0).arg(dpi, 0, 'f', 0)
+                .arg(EXPORT_MAX_PIXELS / 1'000'000), 4000);
+        return false;
+    }
+    const double previousPreviewDpi = renderDpi;
     screenGeometry.dpi = dpi;
     printWidthMm = widthMm;
     printHeightMm = heightMm;
+    renderDpi = previewDpiFor(dpi, widthMm, heightMm);  // the film itself is only rendered on export
+    const QSize size(pixelsFor(widthMm, renderDpi), pixelsFor(heightMm, renderDpi));
 
     setMouseBusy(true);
     const QImage working = size == nativeImage.size() ? nativeImage
                                                       : nativeImage.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    applyFilterScale(size);
+    applyFilterScale(size, renderDpi);
     // keep the picture the same size on screen: zoom scales inversely with the pixel count
-    const int zoom = std::clamp(static_cast<int>(std::lround(ui->graphicsView->getZoomLevel() * previousDpi / dpi)),
+    const int zoom = std::clamp(static_cast<int>(std::lround(ui->graphicsView->getZoomLevel() * previousPreviewDpi / renderDpi)),
                                 MIN_ZOOM, MAX_ZOOM);
     ui->graphicsView->resetScene(size.width(), size.height());
-    ui->graphicsView->setZoomLevel(zoom, true);
     ui->resolutionLabel->setText(QString("%1 × %2").arg(size.width()).arg(size.height()));
     imageHashMono.setSourceImage(&working, true);   // true: same picture, adjustments are kept
     imageHashColor.setSourceImage(&working, true);
@@ -217,6 +228,7 @@ bool MainWindow::applyOutputSize(const double dpi, const double widthMm, const d
     ui->treeWidgetMono->clearAllDitherFlags();
     ui->treeWidgetColor->clearAllDitherFlags();
     setMouseBusy(false);
+    ui->graphicsView->setZoomLevel(zoom, true);  // after setMouseBusy: the zoom field ignores updates while busy
     updateScreenControls();
     treeWidgetItemChangedSlot(activeTreeWidget->currentItem());  // re-dither at the new resolution
     return true;
@@ -296,9 +308,10 @@ void MainWindow::updateScreenControls() {
         lines << tr("1 dot per image pixel");
     }
     if (!firstLoad) {
-        const QImage* working = imageHashMono.getSourceQImage();
-        lines << tr("Film: %1 × %2 px (source %3 × %4 px)").arg(working->width()).arg(working->height())
-                                                            .arg(nativeImage.width()).arg(nativeImage.height());
+        lines << tr("Film: %1 × %2 px").arg(pixelsFor(printWidthMm, g.dpi)).arg(pixelsFor(printHeightMm, g.dpi));
+        if (renderDpi < g.dpi) {  // large film: the preview is lighter, the export renders at full DPI
+            lines << tr("Preview at %1 DPI, film rendered on save").arg(renderDpi, 0, 'f', 0);
+        }
     }
     screenInfoLabel->setText(lines.join("\n"));
 }

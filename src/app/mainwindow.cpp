@@ -4,6 +4,7 @@
 #include "consts.h"
 #include "ui_elements/svg.h"
 #include "ui_elements/signalblocker.h"
+#include "export/filmwriter.h"
 
 #include <QClipboard>
 #include <QMimeData>
@@ -244,42 +245,15 @@ void MainWindow::reDither(const bool force) {
     }
     if (current_dither_number < COLOR_DITHER_START) { // MONO DITHERING
         if(!imageHashMono.hasDitheredImage(current_dither_number)) {  // if dithered image isn't cached, then (re)compute it
-            imageHashMono.setCellSize(screenDotPixels());
-            const DitherImage* ditherSource = imageHashMono.getDitherSourceImage();  // coarse grid when dot size is on
-            uint8_t *out_buf = static_cast<uint8_t *>(calloc(ditherSource->width * ditherSource->height, sizeof(uint8_t)));
-            switch (current_dither_type) {
-                case ALL: ALL_dither(out_buf); break;
-                case GRD: GRD_dither(out_buf); break;
-                case DBS: DBS_dither(out_buf); break;
-                case THR: THR_dither(out_buf); break;
-                case DOT: DOT_dither(out_buf, current_sub_dither_type); break;
-                case ERR: ERR_dither(out_buf, current_sub_dither_type); break;
-                case LIP: LIP_dither(out_buf, current_sub_dither_type); break;
-                case ORD: ORD_dither(out_buf, current_sub_dither_type); break;
-                case PAT: PAT_dither(out_buf, current_sub_dither_type); break;
-                case RIM: RIM_dither(out_buf, current_sub_dither_type); break;
-                case VAR: VAR_dither(out_buf, current_sub_dither_type); break;
-                default: break;
-            }
-            imageHashMono.setImageFromDither(current_dither_number, out_buf);
+            ditherMonoInto(imageHashMono);
             ui->treeWidgetMono->setCurrentItemDitherFlag(true);
-            free(out_buf);
         }
         setDitherImageMono(); // also applies custom light/dark colors
         ui->graphicsView->showSourceMono(ui->showOriginalMono->checkState() == Qt::Checked); // is show original checked?
     } else {  // COLOR DITHERING
         if(!imageHashColor.hasDitheredImage(current_dither_number)) {  // if dithered image isn't cached, then (re)compute it
-            imageHashColor.setCellSize(screenDotPixels());
-            const ColorImage* ditherSource = imageHashColor.getDitherSourceImage();  // coarse grid when dot size is on
-            int* out_buf = static_cast<int*>(calloc(ditherSource->width * ditherSource->height, sizeof(int)));
-            switch (current_dither_type) {
-                case ERR_C: ERR_C_dither(out_buf, current_sub_dither_type); break;
-                case ORD_C: ORD_C_dither(out_buf, current_sub_dither_type); break;
-                default: break;
-            }
-            imageHashColor.setImageFromDither(current_dither_number, cachedPalette->target_palette, out_buf);
+            ditherColorInto(imageHashColor);
             ui->treeWidgetColor->setCurrentItemDitherFlag(true);
-            free(out_buf);
         }
         ui->graphicsView->setDitherImageColor(imageHashColor.getDitheredImage(current_dither_number), ui->treeWidgetColor->getCurrentDitherFileName());
         ui->graphicsView->showSourceColor(ui->showOriginalColor->checkState() == Qt::Checked); // is show original checked?
@@ -287,32 +261,124 @@ void MainWindow::reDither(const bool force) {
     setMouseBusy(false);
 }
 
+void MainWindow::ditherMonoInto(ImageHashMono& hash) {
+    /* runs the current mono ditherer on `hash` - the on-screen preview, or a full-resolution film for export -
+     * and stores the result in it. The ditherers read their source through monoTarget. */
+    monoTarget = &hash;
+    hash.setCellSize(screenDotPixels());
+    const DitherImage* ditherSource = hash.getDitherSourceImage();  // coarse grid when dot size is on
+    uint8_t *out_buf = static_cast<uint8_t *>(calloc(static_cast<size_t>(ditherSource->width) * ditherSource->height, sizeof(uint8_t)));
+    switch (current_dither_type) {
+        case ALL: ALL_dither(out_buf); break;
+        case GRD: GRD_dither(out_buf); break;
+        case DBS: DBS_dither(out_buf); break;
+        case THR: THR_dither(out_buf); break;
+        case DOT: DOT_dither(out_buf, current_sub_dither_type); break;
+        case ERR: ERR_dither(out_buf, current_sub_dither_type); break;
+        case LIP: LIP_dither(out_buf, current_sub_dither_type); break;
+        case ORD: ORD_dither(out_buf, current_sub_dither_type); break;
+        case PAT: PAT_dither(out_buf, current_sub_dither_type); break;
+        case RIM: RIM_dither(out_buf, current_sub_dither_type); break;
+        case VAR: VAR_dither(out_buf, current_sub_dither_type); break;
+        default: break;
+    }
+    hash.setImageFromDither(current_dither_number, out_buf);
+    free(out_buf);
+    monoTarget = &imageHashMono;
+}
+
+void MainWindow::ditherColorInto(ImageHashColor& hash) {
+    /* colour counterpart of ditherMonoInto */
+    colorTarget = &hash;
+    hash.setCellSize(screenDotPixels());
+    const ColorImage* ditherSource = hash.getDitherSourceImage();  // coarse grid when dot size is on
+    int* out_buf = static_cast<int*>(calloc(static_cast<size_t>(ditherSource->width) * ditherSource->height, sizeof(int)));
+    switch (current_dither_type) {
+        case ERR_C: ERR_C_dither(out_buf, current_sub_dither_type); break;
+        case ORD_C: ORD_C_dither(out_buf, current_sub_dither_type); break;
+        default: break;
+    }
+    hash.setImageFromDither(current_dither_number, cachedPalette->target_palette, out_buf);
+    free(out_buf);
+    colorTarget = &imageHashColor;
+}
+
 /****************************
  * IMAGE LOADING & SAVING   *
  ****************************/
 
-void MainWindow::saveFile(const QString &fileName) {
-    /* saves the dithered image */
-    setMouseBusy(true);
-    QImage image;
-    QImageWriter writer;
-    if (lastTabIndex == TAB_INDEX_MONO) {
-        image = imageHashMono.getDitheredImage(current_dither_number)->convertToFormat(QImage::Format_ARGB32);
-    } else {
-        image = imageHashColor.getDitheredImage(current_dither_number)->convertToFormat(QImage::Format_ARGB32);
+QImage MainWindow::renderFilm() {
+    /* the dithered image at the output DPI. When the preview already runs at that DPI it is the film; otherwise
+     * (large films, see screengeometry.h) the current settings are rendered again at full resolution, into
+     * caches that live only for this call so their memory is returned as soon as the file is written */
+    const bool mono = lastTabIndex == TAB_INDEX_MONO;
+    if (renderDpi >= screenGeometry.dpi) {
+        return mono ? *imageHashMono.getDitheredImage(current_dither_number)
+                    : *imageHashColor.getDitheredImage(current_dither_number);
     }
-    writer.setFileName(fileName);
-    if(writer.canWrite()) {
-        writer.write(image);
-        if(writer.error() == 0) {
-            setMouseBusy(false);
-            notification->showText(tr("file saved successfully") + fileName, 2000);
-            return;
-        }
+    const QSize film(pixelsFor(printWidthMm, screenGeometry.dpi), pixelsFor(printHeightMm, screenGeometry.dpi));
+    QImage full = nativeImage.scaled(film, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    const double previewDpi = renderDpi;
+    renderDpi = screenGeometry.dpi;  // LPI cells, dot size and blur are converted at the film's resolution
+    const double pixelsPerMm = screenGeometry.dpi / MM_PER_INCH;
+    const double upscale = static_cast<double>(film.width()) / nativeImage.width();
+    QImage result;
+    if (mono) {
+        ImageHashMono hash;
+        hash.copyAdjustmentsFrom(imageHashMono);
+        hash.pixelsPerMm = pixelsPerMm;
+        hash.denoiseScale = upscale;
+        hash.setSourceImage(&full, true);
+        full = QImage();  // the cache holds its own copy
+        ditherMonoInto(hash);
+        result = *hash.getDitheredImage(current_dither_number);
+    } else {
+        ImageHashColor hash;
+        hash.copyAdjustmentsFrom(imageHashColor);
+        hash.pixelsPerMm = pixelsPerMm;
+        hash.denoiseScale = upscale;
+        hash.setSourceImage(&full, true);
+        full = QImage();
+        ditherColorInto(hash);  // same palette as the preview
+        result = *hash.getDitheredImage(current_dither_number);
+    }
+    renderDpi = previewDpi;
+    return result;
+}
+
+void MainWindow::saveFile(const QString &fileName) {
+    /* saves the film at the output DPI, losslessly, with the DPI in the file (see export/filmwriter.h) */
+    const QString suffix = QFileInfo(fileName).suffix().toLower();
+    if (suffix != "png" && suffix != "tif" && suffix != "tiff") {
+        notification->showText("<font color=#ec6a5e>" + tr("ERROR") + "</font>\n" +
+            tr("save as .png or .tif"), 3000);
+        return;
+    }
+    setMouseBusy(true);
+    if (renderDpi < screenGeometry.dpi) {
+        notification->showText(tr("rendering the film at %1 DPI...").arg(screenGeometry.dpi, 0, 'f', 0), 60000);
+        QApplication::processEvents();
+    }
+    const QImage film = toFilmImage(renderFilm());  // 1-bit when the result is pure black and white
+    QString error;
+    bool ok;
+    if (suffix == "png") {
+        ok = writePng(fileName, film, screenGeometry.dpi, &error);
+    } else {
+        const TiffCompression compression = fileManager.currentSaveFilter() == FileManager::tiffPackBitsFilter()
+                                                ? TiffCompression::PackBits : TiffCompression::None;
+        ok = writeTiff(fileName, film, screenGeometry.dpi, compression, &error);
     }
     setMouseBusy(false);
-    notification->showText("<font color=#ec6a5e>" + tr("ERROR") + "</font>\n" +
-        tr("failed to save file"), 2000);
+    if (ok) {
+        notification->showText(tr("film saved: %1 × %2 px, %3 DPI, %4\n%5")
+                                   .arg(film.width()).arg(film.height()).arg(screenGeometry.dpi, 0, 'f', 0)
+                                   .arg(film.format() == QImage::Format_Mono ? tr("1-bit") : tr("colour"))
+                                   .arg(fileName), 3000);
+    } else {
+        notification->showText("<font color=#ec6a5e>" + tr("ERROR") + "</font>\n" +
+            tr("failed to save file") + "\n" + error, 3000);
+    }
 }
 
 void MainWindow::loadImageFromFileSlot(const QString &fileName) {

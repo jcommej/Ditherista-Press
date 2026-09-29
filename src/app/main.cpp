@@ -39,5 +39,10 @@ int main(int argc, char** argv) {
 
     MainWindow w;
     w.show();
+    // an image passed on the command line ("Open with..." in Explorer) is loaded once the event loop runs
+    const QStringList args = QApplication::arguments();
+    if (args.size() > 1) {
+        QMetaObject::invokeMethod(&w, "loadImageFromFileSlot", Qt::QueuedConnection, Q_ARG(QString, args.at(1)));
+    }
     return a.exec();
 }
