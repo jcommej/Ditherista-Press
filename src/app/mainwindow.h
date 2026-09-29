@@ -16,6 +16,8 @@
 #include "batch/batchditherdialog.h"
 #include "screening/screengeometry.h"
 #include <QTreeWidgetItem>
+#include <functional>
+#include <vector>
 #include <QFuture>
 #include <QMainWindow>
 #include <QtNetwork/QNetworkAccessManager>
@@ -105,11 +107,33 @@ private:
     QCheckBox* dotCheck = nullptr;
     QDoubleSpinBox* dotSpin = nullptr;
     QLabel* screenInfoLabel = nullptr;
+    QDoubleSpinBox* printWidthSpin = nullptr;
+    QDoubleSpinBox* printHeightSpin = nullptr;
+    QToolButton* aspectLockButton = nullptr;  // keeps print width and height in proportion
+    QImage nativeImage;          // picture as loaded, before any resampling to the output DPI
+    double printWidthMm = 0.0;   // physical print size: the reference the whole pipeline keeps
+    double printHeightMm = 0.0;
+    QImage adoptNativeImage(const QImage* image);  // new picture: print size and DPI from the file
+    void applyFilterScale(const QSize& working);
+    bool applyOutputSize(double dpi, double widthMm, double heightMm);
     void setupScreenControls();
     void updateScreenControls();
     [[nodiscard]] bool screenUsesLpi() const;   // current algorithm has a screen cell (ordered matrix)
     [[nodiscard]] int screenDotPixels() const;  // coarse grid for the current algorithm (1 = full resolution)
     OrderedDitherMatrix* applyLpi(OrderedDitherMatrix* matrix, int width, int height) const;
+
+    // shadows / midtones / highlights / blur / denoise rows, see mainwindow_tone.cpp
+    struct AdjustControl {
+        QSlider* slider;
+        QDoubleSpinBox* spin;
+    };
+    std::vector<AdjustControl> adjustControls;
+    QIcon adjustResetIcon;
+    void setupToneControls();
+    void resetToneControls();
+    void addAdjustRow(QGridLayout* grid, int row, const QString& label, const QString& toolTip, int minimum,
+                      int maximum, double scale, int decimals,
+                      const std::function<void(int)>& apply);
 
     /* methods */
     void setDitherImageMono();      // sets ditherimage in graphicsview and applies user chosen light/dark colors
@@ -227,6 +251,9 @@ private slots:
     // dithering
     void forceReDitherSlot() { reDither(true); };
     void screenSettingsChangedSlot();
+    void outputDpiEditedSlot();
+    void printWidthEditedSlot(double widthMm);
+    void printHeightEditedSlot(double heightMm);
     // palette mono
     void monoColorOneChangedSlot(QColor color);
     void monoColorTwoChangedSlot(QColor color);

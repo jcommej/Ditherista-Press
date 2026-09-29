@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QImage>
 #include <QHash>
+#include <vector>
 
 // values are from 1 - 100
 #define DEFAULT_MONO_BRIGHTNESS_ADJUST 0
@@ -16,7 +17,7 @@
 class ImageHashMono final : public ImageHash {
 public:
     /* methods */
-    void setSourceImage(const QImage* img);
+    void setSourceImage(const QImage* img, bool keepAdjustments = false);  // keep: same picture, resampled
     void setImageFromDither(int i, const uint8_t* out_buf);
     [[nodiscard]] DitherImage* getSourceImage() const;
     [[nodiscard]] DitherImage* getDitherSourceImage();  // what the ditherers read: the source, or its coarse cell grid
@@ -27,6 +28,15 @@ public:
     int brightness = DEFAULT_MONO_BRIGHTNESS_ADJUST;
     int contrast = DEFAULT_MONO_CONTRAST_ADJUST;
     int gamma = DEFAULT_MONO_GAMMA_ADJUST;
+    int blacks = 0;      // -100..100, see adjust/tonecurve.h
+    int shadows = 0;
+    int midtones = 0;
+    int highlights = 0;
+    int whites = 0;
+    int blur = 0;        // Gaussian sigma in hundredths of a millimetre on film
+    int denoise = 0;     // 0..100, see adjust/filters.h
+    double pixelsPerMm = 300.0 / 25.4;  // working resolution: converts the blur from mm to pixels
+    double denoiseScale = 1.0;          // working px per source px: upscaling makes the grain bigger
 
 private:
     /* attributes */
@@ -35,8 +45,12 @@ private:
     DitherImage* coarseImage = nullptr;  // sourceImage averaged down to one pixel per dot (cached)
     int coarseCellSize = 0;              // cell size coarseImage was built for
     int cellSize = 1;                    // 1 = one dot per image pixel
+    std::vector<double> filtered;        // origLinear after denoise + blur (cached; empty when both are 0)
+    int filteredBlur = 0;                // settings `filtered` was computed with
+    int filteredDenoise = 0;
     /* methods */
     void reset();
+    const double* filteredSource();
     void clearCoarseImage();
 };
 

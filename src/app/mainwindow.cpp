@@ -40,6 +40,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     /* Constructor */
     uiSetup();  // Qt GUI setup
     setupScreenControls();  // output DPI / LPI panel
+    setupToneControls();    // shadows / midtones / highlights / blur / denoise
+    // the two panels above take ~250 px from the ditherer list: open taller than the minimum when the screen allows
+    resize(width(), std::min(DEFAULT_WINDOW_HEIGHT, screen()->availableGeometry().height() - 40));
     // Ditherista component setup
     fileManager.setParent(this);
     helpWindow = new HelpWindow(this);
@@ -343,13 +346,15 @@ void MainWindow::loadImage(const QImage* image) {
             tr("image resolution is bigger than 4k"), 2000);
         return;
     }
+    // physical size from the file's resolution, then the picture at the output DPI (see mainwindow_screen.cpp)
+    const QImage working = adoptNativeImage(image);
     // reset UI
     notification->cancel();
-    ui->graphicsView->resetScene(image->width(), image->height());
-    ui->resolutionLabel->setText(QString("%1 \u00D7 %2").arg(image->width()).arg(image->height()));
+    ui->graphicsView->resetScene(working.width(), working.height());
+    ui->resolutionLabel->setText(QString("%1 \u00D7 %2").arg(working.width()).arg(working.height()));
 
     // set mono image
-    imageHashMono.setSourceImage(image);
+    imageHashMono.setSourceImage(&working);
     ui->treeWidgetMono->clearAllDitherFlags();
     ui->showOriginalMono->setCheckState(Qt::Unchecked);
     ui->graphicsView->setSourceImageMono(imageHashMono.getSourceQImage());
@@ -358,7 +363,7 @@ void MainWindow::loadImage(const QImage* image) {
     resetGammaButtonMonoClickedSlot();
 
     // set color image
-    imageHashColor.setSourceImage(image);
+    imageHashColor.setSourceImage(&working);
     generateCachedPalette(false, true, true);
     ui->showOriginalColor->setCheckState(Qt::Unchecked);
     ui->graphicsView->setSourceImageColor(imageHashColor.getSourceQImage());
@@ -366,6 +371,7 @@ void MainWindow::loadImage(const QImage* image) {
     resetBrightnessButtonColorClickedSlot();
     resetGammaButtonColorClickedSlot();
     resetSaturationButtonColorClickedSlot();
+    resetToneControls();  // the image caches reset the values themselves in setSourceImage
 
     if(firstLoad) { // on first load, we're in mono dithering mode
         firstLoad = false;

@@ -116,6 +116,21 @@ private slots:
         QCOMPARE(g.sizeMm(300), 25.4);  // 300 px at 300 DPI = 1 inch
     }
 
+    void printSizeIsKeptAcrossDpi() {
+        // a 200 x 150 mm print: the pixel count follows the DPI, the size on film does not
+        for (const double dpi : {300.0, 600.0, 1200.0}) {
+            ScreenGeometry g;
+            g.dpi = dpi;
+            const int w = pixelsFor(200.0, dpi);
+            const int h = pixelsFor(150.0, dpi);
+            QVERIFY(std::abs(g.sizeMm(w) - 200.0) <= MM_PER_INCH / dpi);  // within one pixel
+            QVERIFY(std::abs(g.sizeMm(h) - 150.0) <= MM_PER_INCH / dpi);
+        }
+        QCOMPARE(pixelsFor(200.0, 600.0), 2 * pixelsFor(200.0, 300.0) + (pixelsFor(200.0, 600.0) % 2));
+        QCOMPARE(pixelsFor(25.4, 300.0), 300);  // one inch
+        QCOMPARE(pixelsFor(0.0001, 300.0), 1);  // never zero
+    }
+
     /* ---- matrix stretching: the pattern repeats every DPI / LPI pixels ---- */
 
     void periodMatchesLpiAtEveryDpi() {
@@ -320,5 +335,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(TestScreening)
+QObject* newTestScreening() { return new TestScreening; }
 #include "tst_screening.moc"
