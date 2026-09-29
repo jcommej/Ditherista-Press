@@ -39,6 +39,7 @@ void MainWindow::refreshUiColorDitherStatus(bool resetLab, bool updateSwatches) 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWindow) {
     /* Constructor */
     uiSetup();  // Qt GUI setup
+    setupScreenControls();  // output DPI / LPI panel
     // Ditherista component setup
     fileManager.setParent(this);
     helpWindow = new HelpWindow(this);
@@ -230,8 +231,6 @@ void MainWindow::reDither(const bool force) {
     if(isDithering)
         return;
     setMouseBusy(true);
-    int width = imageHashMono.getSourceImage()->width;
-    int height = imageHashMono.getSourceImage()->height;
     if(force) {
         if (current_dither_number < COLOR_DITHER_START) {
             imageHashMono.clearDitheredImage(current_dither_number);
@@ -241,7 +240,8 @@ void MainWindow::reDither(const bool force) {
     }
     if (current_dither_number < COLOR_DITHER_START) { // MONO DITHERING
         if(!imageHashMono.hasDitheredImage(current_dither_number)) {  // if dithered image isn't cached, then (re)compute it
-            uint8_t *out_buf = static_cast<uint8_t *>(calloc(width * height, sizeof(uint8_t)));
+            const DitherImage* ditherSource = imageHashMono.getDitherSourceImage();  // coarse grid when LPI is on
+            uint8_t *out_buf = static_cast<uint8_t *>(calloc(ditherSource->width * ditherSource->height, sizeof(uint8_t)));
             switch (current_dither_type) {
                 case ALL: ALL_dither(out_buf); break;
                 case GRD: GRD_dither(out_buf); break;
@@ -264,7 +264,8 @@ void MainWindow::reDither(const bool force) {
         ui->graphicsView->showSourceMono(ui->showOriginalMono->checkState() == Qt::Checked); // is show original checked?
     } else {  // COLOR DITHERING
         if(!imageHashColor.hasDitheredImage(current_dither_number)) {  // if dithered image isn't cached, then (re)compute it
-            int* out_buf = static_cast<int*>(calloc(width * height, sizeof(int)));
+            const ColorImage* ditherSource = imageHashColor.getDitherSourceImage();  // coarse grid when LPI is on
+            int* out_buf = static_cast<int*>(calloc(ditherSource->width * ditherSource->height, sizeof(int)));
             switch (current_dither_type) {
                 case ERR_C: ERR_C_dither(out_buf, current_sub_dither_type); break;
                 case ORD_C: ORD_C_dither(out_buf, current_sub_dither_type); break;
@@ -367,5 +368,6 @@ void MainWindow::loadImage(const QImage* image) {
         firstLoad = false;
         enableGui(true);
     }
+    updateScreenInfo();  // film size depends on the image dimensions
     treeWidgetItemChangedSlot(activeTreeWidget->currentItem());
 }

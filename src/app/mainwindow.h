@@ -14,6 +14,7 @@
 #include "ui_elements/mouseeventfilter.h"
 #include "updatecheck.h"
 #include "batch/batchditherdialog.h"
+#include "screening/screengeometry.h"
 #include <QTreeWidgetItem>
 #include <QFuture>
 #include <QMainWindow>
@@ -95,6 +96,15 @@ private:
     QString lastSavedPalette;
 
     BytePalette* customPalette = nullptr;
+
+    // screen (output DPI / LPI), see mainwindow_screen.cpp
+    ScreenGeometry screenGeometry;
+    QComboBox* dpiCombo = nullptr;
+    QCheckBox* lpiCheck = nullptr;
+    QDoubleSpinBox* lpiSpin = nullptr;
+    QLabel* screenInfoLabel = nullptr;
+    void setupScreenControls();
+    void updateScreenInfo();
 
     /* methods */
     void setDitherImageMono();      // sets ditherimage in graphicsview and applies user chosen light/dark colors
@@ -211,6 +221,7 @@ private slots:
     void ORD_IGR_cColorValueChangedSlot(double c);
     // dithering
     void forceReDitherSlot() { reDither(true); };
+    void screenSettingsChangedSlot();
     // palette mono
     void monoColorOneChangedSlot(QColor color);
     void monoColorTwoChangedSlot(QColor color);

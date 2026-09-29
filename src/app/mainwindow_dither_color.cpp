@@ -67,7 +67,7 @@ void MainWindow::ERR_C_dither(int* out_buf, const SubDitherType n) {
     }
     if(matrix != nullptr) {
         bool serpentine = ui->ERR_C_serpentine->isChecked();
-        fthread = QtConcurrent::run(error_diffusion_dither_color, imageHashColor.getSourceImage(),
+        fthread = QtConcurrent::run(error_diffusion_dither_color, imageHashColor.getDitherSourceImage(),
                                     matrix, cachedPalette, serpentine, out_buf);
         runDitherThread();
         ErrorDiffusionMatrix_free(matrix);
@@ -129,7 +129,7 @@ void MainWindow::ORD_C_dither(int* out_buf, const SubDitherType n) {
         default: qDebug() << "WARNING: requested ORD_C ditherer " << n << " not found"; break;
     }
     if(matrix != nullptr) {
-        fthread = QtConcurrent::run(ordered_dither_color, imageHashColor.getSourceImage(), cachedPalette, matrix, out_buf);
+        fthread = QtConcurrent::run(ordered_dither_color, imageHashColor.getDitherSourceImage(), cachedPalette, matrix, out_buf);
         runDitherThread();
         OrderedDitherMatrix_free(matrix);
     }

@@ -22,6 +22,8 @@ public:
     [[nodiscard]] ColorImage* getSourceImage() const;
     void adjustSource();
     ColorImage* getSourceImage();
+    [[nodiscard]] ColorImage* getDitherSourceImage();  // what the ditherers read: the source, or its coarse cell grid
+    bool setCellSize(int n);                            // screen cell size in film pixels; true if it changed
 
     /* attributes */
     int brightness = DEFAULT_COLOR_BRIGHTNESS_ADJUST;
@@ -31,8 +33,11 @@ public:
 private:
     /* attributes */
     ColorImage* sourceImage = nullptr;  // source with adjustments as DitherImage
+    ColorImage* coarseImage = nullptr;  // sourceImage averaged down to one pixel per screen cell (cached)
+    int cellSize = 1;                   // 1 = no screening, one dot per image pixel
     /* methods */
     void reset();
+    void clearCoarseImage();
 };
 
 #endif  // IMAGEHASHCOLOR_H
