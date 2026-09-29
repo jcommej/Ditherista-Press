@@ -221,6 +221,7 @@ bool MainWindow::applyOutputSize(const double dpi, const double widthMm, const d
     ui->graphicsView->resetScene(size.width(), size.height());
     ui->resolutionLabel->setText(QString("%1 × %2").arg(size.width()).arg(size.height()));
     imageHashMono.setSourceImage(&working, true);   // true: same picture, adjustments are kept
+    ui->graphicsView->setOriginalImage(working);
     imageHashColor.setSourceImage(&working, true);
     generateCachedPalette(false, false, true);
     ui->graphicsView->setSourceImageMono(imageHashMono.getSourceQImage());

@@ -3,6 +3,9 @@
 #include <QFile>
 #include <QMimeData>
 #include <QFileInfo>
+#include <QApplication>
+#include <QKeyEvent>
+#include <QMouseEvent>
 
 /* A GraphicsView class that supports dragging and dropping */
 
@@ -14,6 +17,100 @@ GraphicsView::GraphicsView(QWidget* parent) : QGraphicsView(parent) {
                   "    background: #2a2a2a;\n"
                   "    border: none;\n"
                   "}");
+    originalBadge = new QLabel(tr("ORIGINAL"), viewport());
+    originalBadge->setStyleSheet("background: rgba(32, 32, 32, 200); color: #e6e6e6; border-radius: 4px;"
+                                 "padding: 3px 8px; font-weight: bold;");
+    originalBadge->setAttribute(Qt::WA_TransparentForMouseEvents);
+    originalBadge->move(8, 8);
+    originalBadge->adjustSize();
+    originalBadge->hide();
+}
+
+void GraphicsView::replaceItem(QGraphicsPixmapItem*& item, QGraphicsPixmapItem* replacement) {
+    /* swaps a scene item, deleting the old one: removeItem() alone hands ownership back and leaks it, which
+     * upstream did on every re-dither and every adjustment - tens of MB each time on a large preview */
+    if (item != nullptr) {
+        scene.removeItem(item);
+        delete item;
+    }
+    item = replacement;
+    if (item != nullptr) {
+        scene.addItem(item);
+    }
+}
+
+void GraphicsView::setOriginalImage(const QImage& img) {
+    /* the untouched picture for hold-to-compare; its pixmap is only built the first time it is shown */
+    showOriginal(false);
+    replaceItem(orig_pix_item, nullptr);
+    originalImage = img;
+}
+
+void GraphicsView::showOriginal(const bool show) {
+    /* overlays the original on top of whatever is displayed, keeping zoom and scroll position untouched */
+    if (show == showingOriginal || (show && originalImage.isNull())) {
+        return;
+    }
+    showingOriginal = show;
+    if (show && orig_pix_item == nullptr) {
+        QGraphicsPixmapItem* item = new QGraphicsPixmapItem(QPixmap::fromImage(originalImage));
+        item->setZValue(1);  // above source and dithered items
+        item->setAcceptedMouseButtons(Qt::NoButton);
+        replaceItem(orig_pix_item, item);
+    }
+    if (orig_pix_item != nullptr) {
+        orig_pix_item->setVisible(show);
+    }
+    originalBadge->setVisible(show);
+    originalBadge->raise();
+}
+
+void GraphicsView::mousePressEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton) {
+        setFocus();  // so that Space works right after
+        pressPos = event->pos();
+        showOriginal(true);
+    }
+    QGraphicsView::mousePressEvent(event);
+}
+
+void GraphicsView::mouseMoveEvent(QMouseEvent* event) {
+    /* moving past the drag distance turns the hold into a drag of the result out of the window */
+    if (showingOriginal && (event->buttons() & Qt::LeftButton) &&
+        (event->pos() - pressPos).manhattanLength() >= QApplication::startDragDistance()) {
+        showOriginal(false);
+    }
+    QGraphicsView::mouseMoveEvent(event);
+}
+
+void GraphicsView::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton) {
+        showOriginal(false);
+    }
+    QGraphicsView::mouseReleaseEvent(event);
+}
+
+void GraphicsView::keyPressEvent(QKeyEvent* event) {
+    /* Space, while the preview has focus (click it or scroll over it first), is the keyboard equivalent */
+    if (event->key() == Qt::Key_Space) {
+        if (!event->isAutoRepeat()) {
+            showOriginal(true);
+        }
+        event->accept();
+        return;
+    }
+    QGraphicsView::keyPressEvent(event);
+}
+
+void GraphicsView::keyReleaseEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Space) {
+        if (!event->isAutoRepeat()) {
+            showOriginal(false);
+        }
+        event->accept();
+        return;
+    }
+    QGraphicsView::keyReleaseEvent(event);
 }
 
 void GraphicsView::showSourceMono(const bool show) const {
@@ -48,28 +145,26 @@ void GraphicsView::showSourceColor(const bool show) const {
 
 void GraphicsView::setDitherImageMono(const QImage* img, const QString& partialFileName) {
     if(out_pix_item_mono != nullptr) {
-        disconnect(this, SLOT(tempFileCreatedSlot(QString)));
         deleteTempFiles();
-        scene.removeItem(out_pix_item_mono);
     }
-    const QPixmap out_pix = QPixmap::fromImage(*img);
-    out_pix_item_mono = new GraphicsPixmapItem(out_pix);
-    connect(out_pix_item_mono, SIGNAL(tempFileCreated(QString)), this, SLOT(tempFileCreatedSlot(QString)));
-    out_pix_item_mono->setData(0, partialFileName);
-    scene.addItem(out_pix_item_mono);
+    GraphicsPixmapItem* item = new GraphicsPixmapItem(QPixmap::fromImage(*img));
+    connect(item, SIGNAL(tempFileCreated(QString)), this, SLOT(tempFileCreatedSlot(QString)));
+    item->setData(0, partialFileName);
+    QGraphicsPixmapItem* previous = out_pix_item_mono;
+    replaceItem(previous, item);
+    out_pix_item_mono = item;
 }
 
 void GraphicsView::setDitherImageColor(const QImage* img, const QString& partialFileName) {
     if(out_pix_item_color != nullptr) {
-        disconnect(this, SLOT(tempFileCreatedSlot(QString)));
         deleteTempFiles();
-        scene.removeItem(out_pix_item_color);
     }
-    const QPixmap out_pix = QPixmap::fromImage(*img);
-    out_pix_item_color = new GraphicsPixmapItem(out_pix);
-    connect(out_pix_item_color, SIGNAL(tempFileCreated(QString)), this, SLOT(tempFileCreatedSlot(QString)));
-    out_pix_item_color->setData(0, partialFileName);
-    scene.addItem(out_pix_item_color);
+    GraphicsPixmapItem* item = new GraphicsPixmapItem(QPixmap::fromImage(*img));
+    connect(item, SIGNAL(tempFileCreated(QString)), this, SLOT(tempFileCreatedSlot(QString)));
+    item->setData(0, partialFileName);
+    QGraphicsPixmapItem* previous = out_pix_item_color;
+    replaceItem(previous, item);
+    out_pix_item_color = item;
 }
 
 void GraphicsView::deleteTempFiles() {
@@ -82,16 +177,12 @@ void GraphicsView::deleteTempFiles() {
 
 void GraphicsView::setSourceImageMono(const QImage* img) {
     /* sets the original source image */
-    const QPixmap pix = QPixmap::fromImage(*img);
-    src_pix_item_mono = new QGraphicsPixmapItem(pix);
-    scene.addItem(src_pix_item_mono);
+    replaceItem(src_pix_item_mono, new QGraphicsPixmapItem(QPixmap::fromImage(*img)));
 }
 
 void GraphicsView::setSourceImageColor(const QImage* img) {
     /* sets the original source image */
-    const QPixmap pix = QPixmap::fromImage(*img);
-    src_pix_item_color = new QGraphicsPixmapItem(pix);
-    scene.addItem(src_pix_item_color);
+    replaceItem(src_pix_item_color, new QGraphicsPixmapItem(QPixmap::fromImage(*img)));
 }
 
 void GraphicsView::resetScene(const int width, const int height) {
@@ -104,6 +195,9 @@ void GraphicsView::resetScene(const int width, const int height) {
     out_pix_item_color = nullptr;
     src_pix_item_mono = nullptr;
     src_pix_item_color = nullptr;
+    orig_pix_item = nullptr;   // deleted by scene.clear() too
+    showingOriginal = false;
+    originalBadge->hide();
 }
 
 void GraphicsView::dropEvent(QDropEvent* event) {

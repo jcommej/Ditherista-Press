@@ -8,6 +8,7 @@
 #include <QTemporaryFile>
 #include <QImageWriter>
 #include <QBuffer>
+#include <QApplication>
 
 #define NO_ERROR 0
 
@@ -16,8 +17,10 @@ GraphicsPixmapItem::GraphicsPixmapItem(const QPixmap& p) : QGraphicsPixmapItem(p
 }
 
 void GraphicsPixmapItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event) {
-    /* handles dragging the image out of the QGraphicsView */
-    if (dragging) {
+    /* handles dragging the image out of the QGraphicsView. A small movement is not a drag: holding the button
+     * to compare with the original (see GraphicsView) must survive an unsteady hand */
+    const QPointF moved = event->screenPos() - event->buttonDownScreenPos(Qt::LeftButton);
+    if (dragging && moved.manhattanLength() >= QApplication::startDragDistance()) {
         QGraphicsView *view = static_cast<QGraphicsView *>(event->widget());
         view->setAcceptDrops(false);  // prevent circular image imports
         // create temp file (the _XXXXXX.png postfix is intentional!)

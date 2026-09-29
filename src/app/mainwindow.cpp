@@ -423,6 +423,7 @@ void MainWindow::loadImage(const QImage* image) {
 
     // set mono image
     imageHashMono.setSourceImage(&working);
+    ui->graphicsView->setOriginalImage(working);  // hold-to-compare shows this, untouched
     ui->treeWidgetMono->clearAllDitherFlags();
     ui->showOriginalMono->setCheckState(Qt::Unchecked);
     ui->graphicsView->setSourceImageMono(imageHashMono.getSourceQImage());
