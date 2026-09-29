@@ -59,6 +59,7 @@ SOURCES += \
     adjust/filters.cpp \
     adjust/tonecurve.cpp \
     export/filmwriter.cpp \
+    export/psdwriter.cpp \
     treewidget.cpp \
     imagehash/imagehash.cpp \
     imagehash/imagehashcolor.cpp \
@@ -113,7 +114,8 @@ HEADERS += \
     screening/separation.h \
     adjust/filters.h \
     adjust/tonecurve.h \
-    export/filmwriter.h
+    export/filmwriter.h \
+    export/psdwriter.h
 
 FORMS += \
     mainwindow.ui \

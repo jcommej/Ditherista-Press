@@ -5,6 +5,7 @@
 #include "ui_elements/svg.h"
 #include "ui_elements/signalblocker.h"
 #include "export/filmwriter.h"
+#include "export/psdwriter.h"
 
 #include <QClipboard>
 #include <QMimeData>
@@ -359,9 +360,9 @@ QImage MainWindow::renderFilm() {
 void MainWindow::saveFile(const QString &fileName) {
     /* saves the film at the output DPI, losslessly, with the DPI in the file (see export/filmwriter.h) */
     const QString suffix = QFileInfo(fileName).suffix().toLower();
-    if (suffix != "png" && suffix != "tif" && suffix != "tiff" && suffix != "bmp") {
+    if (suffix != "png" && suffix != "tif" && suffix != "tiff" && suffix != "bmp" && suffix != "psd") {
         notification->showText("<font color=#ec6a5e>" + tr("ERROR") + "</font>\n" +
-            tr("save as .png, .tif or .bmp"), 3000);
+            tr("save as .png, .tif, .bmp or .psd"), 3000);
         return;
     }
     setMouseBusy(true);
@@ -389,6 +390,8 @@ void MainWindow::saveFile(const QString &fileName) {
         ok = writePng(fileName, film, screenGeometry.dpi, &error);
     } else if (suffix == "bmp") {
         ok = writeBmp(fileName, film, screenGeometry.dpi, &error);
+    } else if (suffix == "psd") {
+        ok = writePsd(fileName, film, {}, screenGeometry.dpi, &error);  // Grayscale film, or RGB for colour
     } else {
         const TiffCompression compression = fileManager.currentSaveFilter() == FileManager::tiffPackBitsFilter()
                                                 ? TiffCompression::PackBits : TiffCompression::None;

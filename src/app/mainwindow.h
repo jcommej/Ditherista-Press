@@ -135,6 +135,7 @@ private:
     QComboBox* separationModeCombo = nullptr;
     QComboBox* separationViewCombo = nullptr;
     QComboBox* separationExportCombo = nullptr;
+    QCheckBox* separationPsdCompositeCheck = nullptr;
     std::vector<QImage> separationFilms;  // preview films, one per ink
     int separationFilmsFor = -1;          // dither number they were rendered with; -1 = stale
     QImage previewImage;                  // the picture at the preview's resolution, before any adjustment
