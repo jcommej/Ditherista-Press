@@ -42,10 +42,19 @@ void MainWindow::setupSeparationControls() {
     separationExportCombo->setToolTip(tr("Save: one 1-bit file per ink (picture_Cyan.tif, ...), or the simulated "
                                          "print as a single colour image.\nPSD always holds every ink as a spot "
                                          "channel in one file."));
+    separationPsdLayoutCombo = new QComboBox(separationGroup);
+    separationPsdLayoutCombo->addItem(tr("Layers"), static_cast<int>(PsdInkLayout::Layers));
+    separationPsdLayoutCombo->addItem(tr("Spot channels"), static_cast<int>(PsdInkLayout::SpotChannels));
+    separationPsdLayoutCombo->addItem(tr("Layers + spot channels"), static_cast<int>(PsdInkLayout::LayersAndSpotChannels));
+    separationPsdLayoutCombo->setToolTip(tr("How a PSD holds the inks.\n"
+                                            "Layers: one layer per ink in its colour over a Paper layer (Multiply), "
+                                            "or over a black Garment for RGB (Screen).\n"
+                                            "Spot channels: one spot channel per ink, black = ink, printable as films."));
     separationPsdCompositeCheck = new QCheckBox(tr("PSD: include simulated print"), separationGroup);
     separationPsdCompositeCheck->setChecked(true);
-    separationPsdCompositeCheck->setToolTip(tr("On: the PSD's RGB image is the simulated print. Off: it is plain "
-                                               "white and only the spot channels carry the films."));
+    separationPsdCompositeCheck->setToolTip(tr("Spot channels only. On: the PSD's RGB image is the simulated "
+                                               "print. Off: it is plain white and only the spot channels carry the "
+                                               "films. With layers, the image is always the simulated print."));
 
     grid->addWidget(new QLabel(tr("Mode"), separationGroup), 0, 0);
     grid->addWidget(separationModeCombo, 0, 1);
@@ -53,9 +62,11 @@ void MainWindow::setupSeparationControls() {
     grid->addWidget(separationViewCombo, 1, 1);
     grid->addWidget(new QLabel(tr("Save"), separationGroup), 2, 0);
     grid->addWidget(separationExportCombo, 2, 1);
-    grid->addWidget(separationPsdCompositeCheck, 3, 0, 1, 2);
+    grid->addWidget(new QLabel(tr("PSD"), separationGroup), 3, 0);
+    grid->addWidget(separationPsdLayoutCombo, 3, 1);
+    grid->addWidget(separationPsdCompositeCheck, 4, 0, 1, 2);
     channelRows = new QWidget(separationGroup);
-    grid->addWidget(channelRows, 4, 0, 1, 2);
+    grid->addWidget(channelRows, 5, 0, 1, 2);
     grid->setColumnStretch(1, 1);
     separationGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
@@ -86,6 +97,7 @@ void MainWindow::separationModeChangedSlot(int) {
     separationViewCombo->setEnabled(separating);
     separationExportCombo->setEnabled(separating);
     separationPsdCompositeCheck->setEnabled(separating);
+    separationPsdLayoutCombo->setEnabled(separating);
     invalidateSeparation();
     updateSettingsPanelHeight();
     if (!firstLoad) {
@@ -212,11 +224,13 @@ bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* wr
                 spots.push_back({channels[i].name, channels[i].ink, films[i]});
             }
         }
+        const PsdInkLayout layout = static_cast<PsdInkLayout>(separationPsdLayoutCombo->currentData().toInt());
         QImage composite = compositeFromFilms(films, separationMode);
-        if (!separationPsdCompositeCheck->isChecked()) {
-            composite.fill(Qt::white);
+        if (layout == PsdInkLayout::SpotChannels && !separationPsdCompositeCheck->isChecked()) {
+            composite.fill(Qt::white);  // with layers, the image must match what the layers show
         }
-        *written = writePsd(fileName, composite, spots, screenGeometry.dpi, error) ? 1 : 0;
+        *written = writePsd(fileName, composite, spots, screenGeometry.dpi, error, layout,
+                            separationMode == SeparationMode::RGB) ? 1 : 0;
         return *written == 1;
     }
     if (separationExportCombo->currentIndex() == 1) {
