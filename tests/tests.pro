@@ -19,6 +19,8 @@ SOURCES += \
     main.cpp \
     tst_screening.cpp \
     tst_adjust.cpp \
+    tst_export.cpp \
+    $$APP/export/filmwriter.cpp \
     $$APP/screening/cellresample.cpp \
     $$APP/screening/matrixstretch.cpp \
     $$APP/adjust/filters.cpp \

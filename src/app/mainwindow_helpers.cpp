@@ -52,18 +52,17 @@ void MainWindow::fileSaveSlotImpl(const bool saveAs) {
  * MENU ACTIONS SLOTS - COPY & PASTE  *
  **************************************/
 
-void MainWindow::copySlot() const {
-    /* copy current image to clipboard */
+void MainWindow::copySlot() {
+    /* copies the film - at the output DPI, not the possibly lighter preview - for a quick paste into an editor.
+     * The clipboard carries pixels only, no resolution: the pasted image has the right pixel count, and its DPI
+     * is set in the editor (in Photoshop: Image Size, Resample off) */
     if (isActiveWindow()) {
-        QClipboard *clipboard = QGuiApplication::clipboard();
-        QImage image;
-        if (lastTabIndex == TAB_INDEX_MONO) {
-            image = imageHashMono.getDitheredImage(current_dither_number)->convertToFormat(QImage::Format_ARGB32);
-        } else {
-            image = imageHashColor.getDitheredImage(current_dither_number)->convertToFormat(QImage::Format_ARGB32);
-        }
-        clipboard->setImage(image, QClipboard::Clipboard);
-        notification->showText(tr("copied to clipboard"), 1000);
+        setMouseBusy(true);
+        const QImage film = renderFilm().convertToFormat(QImage::Format_ARGB32);
+        QGuiApplication::clipboard()->setImage(film, QClipboard::Clipboard);
+        setMouseBusy(false);
+        notification->showText(tr("film copied: %1 × %2 px\nset the resolution to %3 DPI after pasting")
+                                   .arg(film.width()).arg(film.height()).arg(screenGeometry.dpi, 0, 'f', 0), 3000);
     }
 }
 

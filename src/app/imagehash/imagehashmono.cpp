@@ -90,6 +90,19 @@ void ImageHashMono::clearCoarseImage() {
     coarseImage = nullptr;
 }
 
+void ImageHashMono::copyAdjustmentsFrom(const ImageHashMono& other) {
+    brightness = other.brightness;
+    contrast = other.contrast;
+    gamma = other.gamma;
+    blacks = other.blacks;
+    shadows = other.shadows;
+    midtones = other.midtones;
+    highlights = other.highlights;
+    whites = other.whites;
+    blur = other.blur;
+    denoise = other.denoise;
+}
+
 void ImageHashMono::setCellSize(const int n) {
     /* grid for the next dither only: cached results keep the grid they were dithered with, so switching between
      * algorithms that use different grids does not invalidate them */

@@ -83,6 +83,12 @@ private:
     QFuture<void> fthread;                 // thread for dithering
     ImageHashMono imageHashMono;           // caching for already dithered images Mono
     ImageHashColor imageHashColor;         // caching for already dithered images Color
+    // what the ditherer functions read from: the preview caches above, or a full-resolution film during export
+    ImageHashMono* monoTarget = &imageHashMono;
+    ImageHashColor* colorTarget = &imageHashColor;
+    double renderDpi = SCREEN_DEFAULT_DPI; // resolution of the image being dithered: preview DPI, or output DPI on export
+    void ditherMonoInto(ImageHashMono& hash);
+    void ditherColorInto(ImageHashColor& hash);
     int current_dither_number = 0;         // number of current ditherer (lower numbers=mono, higher numbers=color)
     DitherType current_dither_type = ALL;  // current dither type:     e.g. error diffusion
     SubDitherType current_sub_dither_type = ALL_ALL; // current sub-dither type: e.g. floyd steinberg error diffusion
@@ -114,7 +120,7 @@ private:
     double printWidthMm = 0.0;   // physical print size: the reference the whole pipeline keeps
     double printHeightMm = 0.0;
     QImage adoptNativeImage(const QImage* image);  // new picture: print size and DPI from the file
-    void applyFilterScale(const QSize& working);
+    void applyFilterScale(const QSize& working, double dpi);
     bool applyOutputSize(double dpi, double widthMm, double heightMm);
     void setupScreenControls();
     void updateScreenControls();
@@ -181,6 +187,7 @@ private:
     void updateCachedPalette(BytePalette* pal);
     // file I/O
     void saveFile(const QString &fileName);
+    QImage renderFilm();  // dithered image at the output DPI, re-rendered at full resolution if the preview is lighter
     void loadImage(const QImage* image);
     void fileSaveSlotImpl(bool saveAs);
     // image adjustments
@@ -276,7 +283,7 @@ private slots:
     // misc UI
     void treeWidgetItemChangedSlot(QTreeWidgetItem* item);
     void tabWidgetChangedSlot(int index);
-    void copySlot() const;
+    void copySlot();
     void pasteSlot();
     void editMenuAboutToShowSlot();
     void keyEventSlot(QKeyEvent* event);

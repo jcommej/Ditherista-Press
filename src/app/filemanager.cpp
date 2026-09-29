@@ -38,21 +38,40 @@ QString FileManager::fileSave(const bool saveAs, QString suggestedFileName) {
         return currentFileName;
     }
     if (currentFileName.isEmpty()) {
-        suggestedFileName += ".png";
+        suggestedFileName += currentFilter == pngFilter() || currentFilter.isEmpty() ? ".png"
+                           : currentFilter == bmpFilter() ? ".bmp" : ".tif";
         suggestedFileName = fileIoLocation + QDir::separator() + suggestedFileName;
     } else {
         suggestedFileName = currentFileName;
     }
-    const QString filter = tr("Images") + " (" + FILE_FILTERS.join(" ") + ")";
+    const QString filters = QStringList({pngFilter(), tiffFilter(), tiffPackBitsFilter(), bmpFilter()}).join(";;");
+    QString selected = currentFilter.isEmpty() ? pngFilter() : currentFilter;
     const QString fileName = QFileDialog::getSaveFileName((QWidget*)parent(),
-                                                    tr("Save Image File"), suggestedFileName,
-                                                    filter);
+                                                    tr("Save Film"), suggestedFileName,
+                                                    filters, &selected);
     if(!fileName.isEmpty()) {
         currentFileName = fileName;
+        currentFilter = selected;
         fileIoLocation = QFileInfo(fileName).absolutePath(); // remember file location
         defaultDirectory = false;
     }
     return fileName;
+}
+
+QString FileManager::pngFilter() {
+    return tr("PNG (*.png)");
+}
+
+QString FileManager::bmpFilter() {
+    return tr("BMP (*.bmp)");
+}
+
+QString FileManager::tiffFilter() {
+    return tr("TIFF, uncompressed (*.tif *.tiff)");
+}
+
+QString FileManager::tiffPackBitsFilter() {
+    return tr("TIFF, lossless PackBits compression (*.tif *.tiff)");
 }
 
 bool FileManager::isDefaultDirectory() const {

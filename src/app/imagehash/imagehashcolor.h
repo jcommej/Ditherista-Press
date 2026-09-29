@@ -24,6 +24,7 @@ public:
     ColorImage* getSourceImage();
     [[nodiscard]] ColorImage* getDitherSourceImage();  // what the ditherers read: the source, or its coarse cell grid
     void setCellSize(int n);                            // dot size in film pixels for the next dither (1 = off)
+    void copyAdjustmentsFrom(const ImageHashColor& other);  // every user setting, e.g. preview -> film
 
     /* attributes */
     int brightness = DEFAULT_COLOR_BRIGHTNESS_ADJUST;

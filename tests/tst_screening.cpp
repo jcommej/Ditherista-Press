@@ -131,6 +131,20 @@ private slots:
         QCOMPARE(pixelsFor(0.0001, 300.0), 1);  // never zero
     }
 
+    void previewStaysLightForLargeFilms() {
+        // a film within budget is previewed at full DPI: preview and film are the same image
+        QCOMPARE(previewDpiFor(300.0, 254.0, 169.3), 300.0);
+        // 1 x 1 m at 300 DPI (140 MP) and 254 x 169 mm at 1200 DPI (96 MP) get a reduced preview under budget
+        for (const auto& [dpi, w, h] : {std::tuple{300.0, 1000.0, 1000.0}, std::tuple{1200.0, 254.0, 169.3}}) {
+            const double preview = previewDpiFor(dpi, w, h);
+            QVERIFY(preview < dpi);
+            QVERIFY(static_cast<double>(pixelsFor(w, preview)) * pixelsFor(h, preview) <= PREVIEW_MAX_PIXELS);
+            QVERIFY(static_cast<double>(pixelsFor(w, preview)) * pixelsFor(h, preview) > 0.95 * PREVIEW_MAX_PIXELS);
+        }
+        // and the film itself fits the export limit that the UI enforces
+        QVERIFY(static_cast<long long>(pixelsFor(1000.0, 300.0)) * pixelsFor(1000.0, 300.0) <= EXPORT_MAX_PIXELS);
+    }
+
     /* ---- matrix stretching: the pattern repeats every DPI / LPI pixels ---- */
 
     void periodMatchesLpiAtEveryDpi() {

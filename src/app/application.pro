@@ -57,6 +57,7 @@ SOURCES += \
     mainwindow_tone.cpp \
     adjust/filters.cpp \
     adjust/tonecurve.cpp \
+    export/filmwriter.cpp \
     treewidget.cpp \
     imagehash/imagehash.cpp \
     imagehash/imagehashcolor.cpp \
@@ -108,7 +109,8 @@ HEADERS += \
     screening/cellresample.h \
     screening/matrixstretch.h \
     adjust/filters.h \
-    adjust/tonecurve.h
+    adjust/tonecurve.h \
+    export/filmwriter.h
 
 FORMS += \
     mainwindow.ui \
