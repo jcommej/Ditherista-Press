@@ -6,9 +6,11 @@
 #include <cmath>
 #include <vector>
 
-void ImageHashColor::setSourceImage(const QImage* inputImage) {
+void ImageHashColor::setSourceImage(const QImage* inputImage, const bool keepAdjustments) {
     /* sets the source images */
     ImageHash::setSourceImage(inputImage);
+    ColorImage_free(sourceImage);  // previous picture or previous resolution (upstream leaked it)
+    clearCoarseImage();
     sourceImage = ColorImage_new(origQImage.width(), origQImage.height());
     for(int y = 0; y < origQImage.height(); y++) {
         for(int x = 0; x < origQImage.width(); x++) {
@@ -16,12 +18,14 @@ void ImageHashColor::setSourceImage(const QImage* inputImage) {
             ColorImage_set_rgb(sourceImage, y * origQImage.width() + x, qRed(pixel), qGreen(pixel), qBlue(pixel), qAlpha(pixel));
         }
     }
-    brightness = DEFAULT_COLOR_BRIGHTNESS_ADJUST;
-    contrast = DEFAULT_COLOR_CONTRAST_ADJUST;
-    gamma = DEFAULT_COLOR_GAMMA_ADJUST;
-    saturation = DEFAULT_COLOR_SATURATION_ADJUST;
-    shadows = midtones = highlights = 0;
-    blur = denoise = 0;
+    if (!keepAdjustments) {
+        brightness = DEFAULT_COLOR_BRIGHTNESS_ADJUST;
+        contrast = DEFAULT_COLOR_CONTRAST_ADJUST;
+        gamma = DEFAULT_COLOR_GAMMA_ADJUST;
+        saturation = DEFAULT_COLOR_SATURATION_ADJUST;
+        blacks = shadows = midtones = highlights = whites = 0;
+        blur = denoise = 0;
+    }
     filteredQImage = QImage();  // belongs to the previous image
     filteredBlur = filteredDenoise = 0;
     adjustSource();
@@ -47,8 +51,8 @@ const QImage& ImageHashColor::filteredSource() {
                     plane[static_cast<size_t>(y) * w + x] = ((row[x] >> shift) & 0xff) / 255.0f;  // sRGB is perceptual
                 }
             }
-            guidedDenoise(plane, w, h, denoise);
-            gaussianBlur(plane, w, h, blur / 10.0);
+            guidedDenoise(plane, w, h, denoise, denoiseScale);
+            gaussianBlur(plane, w, h, blur / 100.0 * pixelsPerMm);
             for (int y = 0; y < h; y++) {
                 QRgb* row = reinterpret_cast<QRgb*>(filteredQImage.scanLine(y));
                 for (int x = 0; x < w; x++) {
@@ -72,7 +76,7 @@ void ImageHashColor::adjustSource() {
     double dSaturation = (double)(saturation / 100.0) + 1.0;
     double remove_gamma_exp = 1.0 / 2.2;
     const QImage& base = filteredSource();
-    const ToneCurve curve(shadows, midtones, highlights);
+    const ToneCurve curve(blacks, shadows, midtones, highlights, whites);
     for (int y = 0; y < sourceImage->height; y++) {
         for (int x = 0; x < sourceImage->width; x++) {
             const QRgb pixel = base.pixel(x, y);

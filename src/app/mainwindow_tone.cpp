@@ -9,7 +9,7 @@
 #include <QSlider>
 
 /* This file contains:
- * - the Shadows / Midtones / Highlights / Blur / Denoise rows of the Input Image Settings, for both the mono and
+ * - the Blacks / Shadows / Midtones / Highlights / Whites / Blur / Denoise rows of the Input Image Settings, for both the mono and
  *   the color page. The processing lives in adjust/ and imagehash/; this only builds and wires the controls.
  */
 
@@ -67,13 +67,17 @@ void MainWindow::setupToneControls() {
     adjustResetIcon.addPixmap(*disabled, QIcon::Disabled);
     delete disabled;
 
+    const QString blacksTip = tr("- : crush the darkest tones to solid black (100% ink).\n"
+                                 "+ : lift pure black so no area is solid.");
+    const QString whitesTip = tr("+ : clip the lightest tones to paper white (no dot).\n"
+                                 "- : dull pure white so every area keeps some dots.");
     const QString shadowsTip = tr("Lighten (+) or darken (-) mainly the dark tones. Black stays black.");
     const QString midtonesTip = tr("Lighten (+) or darken (-) mainly the middle tones.");
     const QString highlightsTip = tr("Lighten (+) or darken (-) mainly the light tones. White stays white.");
-    const QString blurTip = tr("Gaussian blur before dithering, radius in image pixels.");
+    const QString blurTip = tr("Gaussian blur before dithering, radius in mm on film: the same softness at any DPI.");
     const QString denoiseTip = tr("Edge-preserving noise reduction before dithering: smooths grain in flat areas "
                                   "without softening outlines.");
-    const int blurMax = static_cast<int>(BLUR_MAX_PX * 10);
+    const int blurMax = static_cast<int>(BLUR_MAX_MM * 100);
 
     const auto monoSet = [this](int& field, const int value) {
         if (field != value) { field = value; adjustImageMono(); }
@@ -87,13 +91,17 @@ void MainWindow::setupToneControls() {
         QGridLayout* grid = ui->gridLayout_17;
         int row = grid->rowCount() - 1;  // the "show original" checkbox row, moved to the end below
         grid->removeWidget(ui->showOriginalMono);
+        addAdjustRow(grid, row++, tr("Blacks"), blacksTip, -100, 100, 1.0, 0,
+                     [=, this](int v) { monoSet(imageHashMono.blacks, v); });
         addAdjustRow(grid, row++, tr("Shadows"), shadowsTip, -100, 100, 1.0, 0,
                      [=, this](int v) { monoSet(imageHashMono.shadows, v); });
         addAdjustRow(grid, row++, tr("Midtones"), midtonesTip, -100, 100, 1.0, 0,
                      [=, this](int v) { monoSet(imageHashMono.midtones, v); });
         addAdjustRow(grid, row++, tr("Highlights"), highlightsTip, -100, 100, 1.0, 0,
                      [=, this](int v) { monoSet(imageHashMono.highlights, v); });
-        addAdjustRow(grid, row++, tr("Blur (px)"), blurTip, 0, blurMax, 10.0, 1,
+        addAdjustRow(grid, row++, tr("Whites"), whitesTip, -100, 100, 1.0, 0,
+                     [=, this](int v) { monoSet(imageHashMono.whites, v); });
+        addAdjustRow(grid, row++, tr("Blur (mm)"), blurTip, 0, blurMax, 100.0, 2,
                      [=, this](int v) { monoSet(imageHashMono.blur, v); });
         addAdjustRow(grid, row++, tr("Denoise"), denoiseTip, 0, DENOISE_MAX, 1.0, 0,
                      [=, this](int v) { monoSet(imageHashMono.denoise, v); });
@@ -104,13 +112,17 @@ void MainWindow::setupToneControls() {
         QGridLayout* grid = ui->gridLayout_19;
         int row = grid->rowCount() - 1;
         grid->removeWidget(ui->showOriginalColor);
+        addAdjustRow(grid, row++, tr("Blacks"), blacksTip, -100, 100, 1.0, 0,
+                     [=, this](int v) { colorSet(imageHashColor.blacks, v); });
         addAdjustRow(grid, row++, tr("Shadows"), shadowsTip, -100, 100, 1.0, 0,
                      [=, this](int v) { colorSet(imageHashColor.shadows, v); });
         addAdjustRow(grid, row++, tr("Midtones"), midtonesTip, -100, 100, 1.0, 0,
                      [=, this](int v) { colorSet(imageHashColor.midtones, v); });
         addAdjustRow(grid, row++, tr("Highlights"), highlightsTip, -100, 100, 1.0, 0,
                      [=, this](int v) { colorSet(imageHashColor.highlights, v); });
-        addAdjustRow(grid, row++, tr("Blur (px)"), blurTip, 0, blurMax, 10.0, 1,
+        addAdjustRow(grid, row++, tr("Whites"), whitesTip, -100, 100, 1.0, 0,
+                     [=, this](int v) { colorSet(imageHashColor.whites, v); });
+        addAdjustRow(grid, row++, tr("Blur (mm)"), blurTip, 0, blurMax, 100.0, 2,
                      [=, this](int v) { colorSet(imageHashColor.blur, v); });
         addAdjustRow(grid, row++, tr("Denoise"), denoiseTip, 0, DENOISE_MAX, 1.0, 0,
                      [=, this](int v) { colorSet(imageHashColor.denoise, v); });

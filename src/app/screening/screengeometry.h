@@ -38,6 +38,23 @@ inline constexpr double SCREEN_MIN_DOT_MM = 0.01;
 inline constexpr double SCREEN_MAX_DOT_MM = 10.0;
 inline constexpr double MM_PER_INCH = 25.4;
 
+/* Physical size is the reference
+ * ------------------------------
+ * A picture's print size comes from its file resolution (pixels / file DPI) and can be edited. The working image
+ * is the picture resampled to printSize x Output DPI, so changing the DPI changes the pixel count, never the size
+ * on film. On load the Output DPI starts at the file's own DPI, which means no resampling at all: an untouched
+ * image goes through the pipeline pixel for pixel, as in upstream Ditherista.
+ *
+ * The working image is capped: every stage keeps full-resolution buffers (double-precision grey, the dithered
+ * result, the on-screen copy), around 75 bytes per pixel in total. */
+inline constexpr long long WORKING_MAX_PIXELS = 80'000'000;
+
+inline int pixelsFor(const double mm, const double dpi) {
+    /* pixel count of `mm` at `dpi` */
+    const long n = std::lround(mm * dpi / MM_PER_INCH);
+    return n < 1 ? 1 : static_cast<int>(n);
+}
+
 struct ScreenGeometry {
     double dpi = SCREEN_DEFAULT_DPI;        // output (film) resolution
     double lpi = SCREEN_DEFAULT_LPI;        // screen frequency, for matrix-based algorithms

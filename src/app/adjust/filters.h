@@ -12,10 +12,10 @@
  *
  * Both are no-ops at 0, returning the plane untouched, so neutral settings change nothing. */
 
-inline constexpr double BLUR_MAX_PX = 20.0;
+inline constexpr double BLUR_MAX_MM = 3.0;
 inline constexpr int DENOISE_MAX = 100;
 
-// Gaussian blur, sigma in pixels. Separable, edges clamped. 0 = no change.
+// Gaussian blur, sigma in pixels (callers convert from mm on film). Separable, edges clamped. 0 = no change.
 void gaussianBlur(std::vector<float>& plane, int width, int height, double sigma);
 
 /* Edge-preserving denoise, strength 0..DENOISE_MAX. 0 = no change.
@@ -23,6 +23,8 @@ void gaussianBlur(std::vector<float>& plane, int width, int height, double sigma
  * where local variance is high compared to the noise level eps, pixels are left almost untouched. That removes
  * the grain a dither would otherwise amplify into speckle, without softening outlines the way a blur does. Cost
  * is independent of the radius (box filters on running sums), which matters on film-sized images. */
-void guidedDenoise(std::vector<float>& plane, int width, int height, int strength);
+// radiusScale: working pixels per source pixel. Upscaling makes the grain bigger in pixels, so the window grows
+// with it and the same strength removes the same grain at any output DPI.
+void guidedDenoise(std::vector<float>& plane, int width, int height, int strength, double radiusScale = 1.0);
 
 #endif // FILTERS_H

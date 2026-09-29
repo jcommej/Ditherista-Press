@@ -105,12 +105,12 @@ static std::vector<float> boxMean(const std::vector<float>& in, const int width,
     return out;
 }
 
-void guidedDenoise(std::vector<float>& plane, const int width, const int height, const int strength) {
+void guidedDenoise(std::vector<float>& plane, const int width, const int height, const int strength, const double radiusScale) {
     if (strength <= 0) {
         return;
     }
     const double s = std::min(strength, DENOISE_MAX) / static_cast<double>(DENOISE_MAX);
-    const int radius = 2 + static_cast<int>(std::lround(4.0 * s));  // 2..6 px
+    const int radius = std::max(1, static_cast<int>(std::lround((2.0 + 4.0 * s) * std::max(radiusScale, 1.0))));  // 2..6 source px
     const double noise = 0.12 * s;                                  // noise std-dev treated as flat, in 0..1 units
     const double eps = noise * noise;
     const size_t n = plane.size();

@@ -4,9 +4,12 @@
 #include "../adjust/tonecurve.h"
 #include <vector>
 
-void ImageHashMono::setSourceImage(const QImage* inputImage) {
+void ImageHashMono::setSourceImage(const QImage* inputImage, const bool keepAdjustments) {
     /* sets the source images */
     ImageHash::setSourceImage(inputImage);
+    DitherImage_free(sourceImage);  // previous picture or previous resolution (upstream leaked these)
+    DitherImage_free(origLinear);
+    clearCoarseImage();
     sourceImage = DitherImage_new(origQImage.width(), origQImage.height());
     origLinear = DitherImage_new(origQImage.width(), origQImage.height());
     for(int y = 0; y < sourceImage->height; y++) {
@@ -16,11 +19,13 @@ void ImageHashMono::setSourceImage(const QImage* inputImage) {
             DitherImage_set_pixel_rgba(origLinear, x, y, qRed(pixel), qGreen(pixel), qBlue(pixel), qAlpha(pixel), true);
         }
     }
-    brightness = DEFAULT_MONO_BRIGHTNESS_ADJUST;
-    contrast = DEFAULT_MONO_CONTRAST_ADJUST;
-    gamma = DEFAULT_MONO_GAMMA_ADJUST;
-    shadows = midtones = highlights = 0;
-    blur = denoise = 0;
+    if (!keepAdjustments) {
+        brightness = DEFAULT_MONO_BRIGHTNESS_ADJUST;
+        contrast = DEFAULT_MONO_CONTRAST_ADJUST;
+        gamma = DEFAULT_MONO_GAMMA_ADJUST;
+        blacks = shadows = midtones = highlights = whites = 0;
+        blur = denoise = 0;
+    }
     filtered.clear();  // belongs to the previous image
     filteredBlur = filteredDenoise = 0;
     adjustSource();
@@ -42,8 +47,8 @@ const double* ImageHashMono::filteredSource() {
         for (size_t i = 0; i < n; i++) {
             plane[i] = static_cast<float>(gamma_encode(origLinear->buffer[i]));  // filters work perceptually
         }
-        guidedDenoise(plane, w, h, denoise);
-        gaussianBlur(plane, w, h, blur / 10.0);
+        guidedDenoise(plane, w, h, denoise, denoiseScale);
+        gaussianBlur(plane, w, h, blur / 100.0 * pixelsPerMm);
         filtered.resize(n);
         for (size_t i = 0; i < n; i++) {
             filtered[i] = gamma_decode(plane[i]);
@@ -60,7 +65,7 @@ void ImageHashMono::adjustSource() {
     double dContrast = (double)(contrast / 100.0) + 1.0;
     double dGamma = 1.0 / ((double)(gamma / 100.0) + 1.0);
     const double* base = filteredSource();
-    const ToneCurve curve(shadows, midtones, highlights);
+    const ToneCurve curve(blacks, shadows, midtones, highlights, whites);
     for (int y = 0; y < sourceImage->height; y++) {
         for (int x = 0; x < sourceImage->width; x++) {
             const size_t i = y * sourceImage->width + x;

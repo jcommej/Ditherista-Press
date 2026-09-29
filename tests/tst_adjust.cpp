@@ -45,30 +45,30 @@ private slots:
     /* ---- tone curve ---- */
 
     void neutralCurveIsIdentity() {
-        const ToneCurve curve(0, 0, 0);
+        const ToneCurve curve(0, 0, 0, 0, 0);
         QVERIFY(curve.isIdentity());
         for (int i = 0; i <= 100; i++) {
             QCOMPARE(curve.apply(i / 100.0), i / 100.0);
         }
     }
 
-    void blackAndWhiteStayFixed() {
-        for (const int amount : {-100, 100}) {
-            for (const ToneCurve& curve : {ToneCurve(amount, 0, 0), ToneCurve(0, amount, 0), ToneCurve(0, 0, amount),
-                                           ToneCurve(amount, amount, amount)}) {
+    void zoneSlidersNeverMoveBlackOrWhite() {
+        for (const int a : {-100, 100}) {
+            for (const ToneCurve& curve : {ToneCurve(0, a, 0, 0, 0), ToneCurve(0, 0, a, 0, 0), ToneCurve(0, 0, 0, a, 0),
+                                           ToneCurve(0, a, a, a, 0)}) {
                 QCOMPARE(curve.apply(0.0), 0.0);
                 QCOMPARE(curve.apply(1.0), 1.0);
             }
         }
     }
 
-    void eachSliderActsMostlyOnItsZone() {
+    void eachZoneSliderActsMostlyOnItsZone() {
         const auto shift = [](const ToneCurve& c, const double v) { return c.apply(v) - v; };
-        const ToneCurve shadows(100, 0, 0), midtones(0, 100, 0), highlights(0, 0, 100);
+        const ToneCurve shadows(0, 100, 0, 0, 0), midtones(0, 0, 100, 0, 0), highlights(0, 0, 0, 100, 0);
         // full effect at the zone centre
-        QVERIFY(std::abs(shift(shadows, 0.25) - ToneCurve::MAX_SHIFT) < 1e-9);
-        QVERIFY(std::abs(shift(midtones, 0.5) - ToneCurve::MAX_SHIFT) < 1e-9);
-        QVERIFY(std::abs(shift(highlights, 0.75) - ToneCurve::MAX_SHIFT) < 1e-9);
+        QVERIFY(std::abs(shift(shadows, 0.25) - ToneCurve::ZONE_SHIFT) < 1e-9);
+        QVERIFY(std::abs(shift(midtones, 0.5) - ToneCurve::ZONE_SHIFT) < 1e-9);
+        QVERIFY(std::abs(shift(highlights, 0.75) - ToneCurve::ZONE_SHIFT) < 1e-9);
         // and much less on the far side of the range: this is not a brightness control
         QVERIFY(shift(shadows, 0.2) > 3 * std::abs(shift(shadows, 0.8)));
         QVERIFY(shift(highlights, 0.8) > 3 * std::abs(shift(highlights, 0.2)));
@@ -77,26 +77,54 @@ private slots:
     }
 
     void negativeDarkens() {
-        const ToneCurve curve(-100, -100, -100);
+        const ToneCurve curve(0, -100, -100, -100, 0);
         for (const double v : {0.1, 0.25, 0.5, 0.75, 0.9}) {
             QVERIFY(curve.apply(v) < v);
         }
     }
 
+    void blacksCrushOrLift() {
+        const double range = ToneCurve::ENDPOINT_RANGE;
+        const ToneCurve crush(-100, 0, 0, 0, 0);
+        QCOMPARE(crush.apply(0.0), 0.0);
+        QCOMPARE(crush.apply(range * 0.9), 0.0);   // dark tones become solid black
+        QVERIFY(crush.apply(range + 0.05) > 0.0);  // and the rest still grades
+        QCOMPARE(crush.apply(1.0), 1.0);
+        const ToneCurve lift(100, 0, 0, 0, 0);
+        QCOMPARE(lift.apply(0.0), range);           // no solid black left
+        QCOMPARE(lift.apply(1.0), 1.0);
+        const ToneCurve half(-50, 0, 0, 0, 0);
+        QCOMPARE(half.apply(range / 2 * 0.9), 0.0); // proportional to the slider
+        QVERIFY(half.apply(range * 0.9) > 0.0);
+    }
+
+    void whitesClipOrDull() {
+        const double range = ToneCurve::ENDPOINT_RANGE;
+        const ToneCurve clip(0, 0, 0, 0, 100);
+        QCOMPARE(clip.apply(1.0 - range * 0.9), 1.0);  // light tones become paper white
+        QVERIFY(clip.apply(1.0 - range - 0.05) < 1.0);
+        QCOMPARE(clip.apply(0.0), 0.0);
+        const ToneCurve dull(0, 0, 0, 0, -100);
+        QCOMPARE(dull.apply(1.0), 1.0 - range);        // every area keeps some dots
+        QCOMPARE(dull.apply(0.0), 0.0);
+    }
+
     void neverInvertsTones() {
-        // every combination, including opposed extremes, stays strictly increasing
+        // every combination of the five sliders, including opposed extremes
         const int amounts[] = {-100, -50, 0, 50, 100};
-        for (const int s : amounts) {
-            for (const int m : amounts) {
-                for (const int h : amounts) {
-                    const ToneCurve curve(s, m, h);
-                    double previous = curve.apply(0.0);
-                    for (int i = 1; i <= 1000; i++) {
-                        const double value = curve.apply(i / 1000.0);
-                        QVERIFY2(value > previous, qPrintable(QString("s=%1 m=%2 h=%3 at %4").arg(s).arg(m).arg(h).arg(i)));
-                        previous = value;
-                    }
+        for (const int b : amounts) for (const int s : amounts) for (const int m : amounts)
+        for (const int h : amounts) for (const int w : amounts) {
+            const ToneCurve curve(b, s, m, h, w);
+            double previous = curve.apply(0.0);
+            for (int i = 1; i <= 400; i++) {
+                const double v = i / 400.0;
+                const double value = curve.apply(v);
+                // flat only where blacks are crushed or whites clipped; strictly rising through the zones
+                const bool mustRise = v >= 0.25 && v <= 0.75;
+                if (mustRise ? value <= previous : value < previous) {
+                    QFAIL(qPrintable(QString("b=%1 s=%2 m=%3 h=%4 w=%5 at %6").arg(b).arg(s).arg(m).arg(h).arg(w).arg(v)));
                 }
+                previous = value;
             }
         }
     }
@@ -165,10 +193,13 @@ private slots:
         mono.shadows = 40;
         mono.midtones = -30;
         mono.highlights = 20;
+        mono.blacks = -60;
+        mono.whites = 40;
         mono.blur = 25;
         mono.denoise = 50;
         mono.adjustSource();
         QVERIFY(std::vector<double>(source->buffer, source->buffer + 90 * 60) != original);
+        mono.blacks = mono.whites = 0;
         mono.shadows = mono.midtones = mono.highlights = mono.blur = mono.denoise = 0;
         mono.adjustSource();
         QCOMPARE(std::vector<double>(source->buffer, source->buffer + 90 * 60), original);
