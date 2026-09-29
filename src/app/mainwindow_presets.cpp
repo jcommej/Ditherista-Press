@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "treewidget.h"
+#include "export/psdwriter.h"
 #include "ui_elements/signalblocker.h"
 #include <QCheckBox>
 #include <QComboBox>
@@ -166,7 +167,8 @@ QJsonObject MainWindow::capturePreset() const {
     }
     preset.insert("separation", QJsonObject{
         {"mode", static_cast<int>(separationMode)}, {"save", separationExportCombo->currentIndex()},
-        {"psdComposite", separationPsdCompositeCheck->isChecked()}, {"inks", inks}});
+        {"psdComposite", separationPsdCompositeCheck->isChecked()},
+        {"psdLayout", separationPsdLayoutCombo->currentData().toInt()}, {"inks", inks}});
 
     preset.insert("monoColors", QJsonObject{
         {"dark", ui->monoColorOneButton->getColor().name(QColor::HexArgb)},
@@ -241,6 +243,10 @@ void MainWindow::applyPreset(const QJsonObject& preset) {
     }
     whileBlocking(separationExportCombo)->setCurrentIndex(separation.value("save").toInt(0));
     whileBlocking(separationPsdCompositeCheck)->setChecked(separation.value("psdComposite").toBool(true));
+    const int layout = separationPsdLayoutCombo->findData(separation.value("psdLayout").toInt(static_cast<int>(PsdInkLayout::Layers)));
+    if (layout >= 0) {
+        whileBlocking(separationPsdLayoutCombo)->setCurrentIndex(layout);
+    }
     const int modeIndex = separationModeCombo->findData(separation.value("mode").toInt(0));
     if (modeIndex >= 0 && modeIndex != separationModeCombo->currentIndex()) {
         separationModeCombo->setCurrentIndex(modeIndex);  // rebuilds the ink rows from channelSettings

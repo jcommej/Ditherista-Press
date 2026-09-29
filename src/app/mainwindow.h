@@ -141,6 +141,7 @@ private:
     QComboBox* separationViewCombo = nullptr;
     QComboBox* separationExportCombo = nullptr;
     QCheckBox* separationPsdCompositeCheck = nullptr;
+    QComboBox* separationPsdLayoutCombo = nullptr;  // inks as layers, spot channels, or both
     struct ChannelSettings {
         bool enabled = true;
         double lpi = 0.0;    // 0 = follow the Screen panel's LPI

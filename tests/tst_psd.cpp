@@ -17,7 +17,30 @@ struct Psd {
     std::vector<QRgb> inks;
     std::vector<int> kinds;
     std::vector<QByteArray> planes;  // decoded channel data, width * height each
+    struct Layer {
+        QString name;
+        QByteArray blend;
+        std::vector<int> ids;
+        std::vector<QByteArray> planes;  // decoded, same order as ids
+    };
+    std::vector<Layer> layers;
 };
+
+QByteArray unpackRows(const QByteArray& d, qsizetype& at, const int height) {
+    /* one RLE channel: row length table, then the rows */
+    std::vector<quint16> counts;
+    for (int y = 0; y < height; y++) { counts.push_back(quint16(quint8(d[at]) << 8 | quint8(d[at + 1]))); at += 2; }
+    QByteArray plane;
+    for (int y = 0; y < height; y++) {
+        const qsizetype end = at + counts[size_t(y)];
+        while (at < end) {
+            const int n = qint8(d[at++]);
+            if (n >= 0) { plane.append(d.mid(at, n + 1)); at += n + 1; }
+            else if (n != -128) { plane.append(QByteArray(1 - n, d[at++])); }
+        }
+    }
+    return plane;
+}
 
 quint32 be32(const QByteArray& d, const qsizetype at) {
     return quint32(quint8(d[at])) << 24 | quint32(quint8(d[at + 1])) << 16 | quint32(quint8(d[at + 2])) << 8 | quint8(d[at + 3]);
@@ -66,7 +89,36 @@ Psd readPsd(const QString& path) {
         at = data + ((size + 1) & ~1u);
     }
     at = resourcesEnd;
-    at += 4 + be32(d, at);                          // layer and mask info
+    const qsizetype layerSectionEnd = at + 4 + be32(d, at);
+    if (be32(d, at) > 0 && be32(d, at + 4) > 0) {   // layer info present
+        qsizetype pos = at + 8;
+        const int count = qint16(be16(d, pos));
+        pos += 2;
+        for (int i = 0; i < std::abs(count); i++) {
+            Psd::Layer layer;
+            pos += 16;                               // rectangle
+            const int n = be16(d, pos);
+            pos += 2;
+            for (int c = 0; c < n; c++) { layer.ids.push_back(qint16(be16(d, pos))); pos += 6; }
+            layer.blend = d.mid(pos + 4, 4);
+            pos += 12;                               // signature, key, opacity, clipping, flags, filler
+            const quint32 extra = be32(d, pos);
+            const qsizetype extraStart = pos + 4;
+            qsizetype e = extraStart;
+            e += 4 + be32(d, e);                     // layer mask
+            e += 4 + be32(d, e);                     // blending ranges
+            layer.name = QString::fromLatin1(d.mid(e + 1, quint8(d[e])));
+            pos = extraStart + extra;
+            p.layers.push_back(layer);
+        }
+        for (Psd::Layer& layer : p.layers) {
+            for (size_t c = 0; c < layer.ids.size(); c++) {
+                pos += 2;                            // compression (RLE)
+                layer.planes.push_back(unpackRows(d, pos, p.height));
+            }
+        }
+    }
+    at = layerSectionEnd;                           // layer and mask info
     const quint16 compression = be16(d, at);
     at += 2;
     if (compression != 1) return p;
@@ -143,6 +195,59 @@ private slots:
         for (size_t i = 0; i < spots.size(); i++) {
             QCOMPARE(p.planes[3 + i], greyBytes(spots[i].film));
         }
+    }
+
+    void cmykInksAsLayers() {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("layers.psd");
+        const int w = 91, h = 57;
+        QImage print(w, h, QImage::Format_RGB32);
+        print.fill(qRgb(10, 20, 30));
+        const std::vector<PsdSpotChannel> inks = {
+            {"Cyan", qRgb(0, 255, 255), film(w, h, 1)}, {"Magenta", qRgb(255, 0, 255), film(w, h, 2)},
+            {"Yellow", qRgb(255, 255, 0), film(w, h, 3)}, {"Black", qRgb(0, 0, 0), film(w, h, 4)}};
+        QString error;
+        QVERIFY2(writePsd(path, print, inks, 600.0, &error, PsdInkLayout::Layers), qPrintable(error));
+        keepCopy(path, "layers.psd");
+        const Psd p = readPsd(path);
+        QCOMPARE(p.channels, 3);  // layers only: no spot channels
+        QCOMPARE(p.dpi, 600.0);
+        QCOMPARE(p.layers.size(), size_t(5));
+        QStringList names;
+        for (const auto& layer : p.layers) names << layer.name;
+        QCOMPARE(names, QStringList({"Paper", "Cyan", "Magenta", "Yellow", "Black"}));  // bottom to top
+        QCOMPARE(p.layers[0].blend, QByteArray("norm"));
+        for (size_t i = 1; i < 5; i++) QCOMPARE(p.layers[i].blend, QByteArray("mul "));  // inks multiply
+        // each ink layer: its colour, opaque exactly where its film has ink
+        for (size_t i = 0; i < inks.size(); i++) {
+            const auto& layer = p.layers[i + 1];
+            QCOMPARE(layer.ids, std::vector<int>({-1, 0, 1, 2}));
+            const QByteArray film = greyBytes(inks[i].film);
+            QByteArray alpha;
+            for (const char v : film) alpha.append(char(quint8(v) < 128 ? 255 : 0));
+            QCOMPARE(layer.planes[0], alpha);
+            QCOMPARE(layer.planes[1], QByteArray(w * h, char(qRed(inks[i].ink))));
+        }
+        // the document's own image is still the given composite
+        QCOMPARE(p.planes[0], QByteArray(w * h, char(10)));
+    }
+
+    void rgbInksScreenOverAGarment() {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("rgb.psd");
+        const std::vector<PsdSpotChannel> inks = {{"Red", qRgb(255, 0, 0), film(20, 10, 1)},
+                                                  {"Green", qRgb(0, 255, 0), film(20, 10, 2)},
+                                                  {"Blue", qRgb(0, 0, 255), film(20, 10, 3)}};
+        QString error;
+        QVERIFY(writePsd(path, QImage(20, 10, QImage::Format_RGB32), inks, 300.0, &error,
+                         PsdInkLayout::LayersAndSpotChannels, true));
+        keepCopy(path, "rgb.psd");
+        const Psd p = readPsd(path);
+        QCOMPARE(p.channels, 3 + 3);                // layers and spot channels
+        QCOMPARE(p.layers[0].name, QString("Garment"));
+        QCOMPARE(p.layers[0].planes[1], QByteArray(200, char(0)));  // black background
+        QCOMPARE(p.layers[1].blend, QByteArray("scrn"));
+        QCOMPARE(p.names, QStringList({"Red", "Green", "Blue"}));
     }
 
     void blackAndWhiteFilmIsAGreyscaleDocument() {

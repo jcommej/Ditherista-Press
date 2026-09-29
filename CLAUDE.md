@@ -101,7 +101,7 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `adjust/tonecurve.*` | 5-point monotone curve (Fritsch-Carlson) for blacks → whites |
 | `adjust/filters.*` | Gaussian blur, guided-filter denoise (multithreaded, float planes) |
 | `export/filmwriter.*` | `toFilmImage` (1-bit when possible), TIFF writer (exact DPI rational, PackBits), PNG, BMP |
-| `export/psdwriter.*` | PSD: flat composite + spot channels, RLE, resolution resource |
+| `export/psdwriter.*` | PSD: composite, inks as layers (Multiply over Paper / Screen over Garment) and/or spot channels, RLE, resolution |
 | `presets/presetstore.*` | JSON preset files in `%APPDATA%/ditherista/presets` |
 
 ### MainWindow additions
@@ -150,7 +150,7 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | 4 Hold click / Space = original | done (`feature/preview-original`) |
 | 5 Lossless PNG/TIFF/BMP + DPI, preview/export split | done (`feature/export`) |
 | 6 CMYK/RGB separation | done (`feature/cmyk-separation`) |
-| 7 PSD | spot channels done (`feature/psd-export`); **inks as layers requested next** |
+| 7 PSD | done: spot channels (`feature/psd-export`), inks as layers or both (`feature/psd-layers`) |
 | 8 Per-ink LPI and angle | done (`feature/channel-angles`) |
 | 9 Presets | done (`feature/presets`) |
 | 10 Dot shapes, histogram, curves, technical overlay, UI | to do |
