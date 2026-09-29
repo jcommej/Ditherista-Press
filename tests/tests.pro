@@ -1,6 +1,6 @@
 # Unit tests for the screen-printing additions. Plain QtTest, no GUI shown, no files written outside build/.
 #   build and run: tests\run_tests.ps1 (Windows) - needs libdither built first (cd libdither && make libdither)
-QT += core gui testlib
+QT += core gui widgets testlib
 CONFIG += c++20 console
 CONFIG -= app_bundle
 TARGET = tests
@@ -20,6 +20,9 @@ SOURCES += \
     tst_screening.cpp \
     tst_adjust.cpp \
     tst_export.cpp \
+    tst_preview.cpp \
+    $$APP/viewport/graphicsview.cpp \
+    $$APP/viewport/graphicspixmapitem.cpp \
     $$APP/export/filmwriter.cpp \
     $$APP/screening/cellresample.cpp \
     $$APP/screening/matrixstretch.cpp \
@@ -30,6 +33,8 @@ SOURCES += \
     $$APP/imagehash/imagehashcolor.cpp
 
 HEADERS += \
+    $$APP/viewport/graphicsview.h \
+    $$APP/viewport/graphicspixmapitem.h \
     $$APP/imagehash/imagehash.h \
     $$APP/imagehash/imagehashmono.h \
     $$APP/imagehash/imagehashcolor.h

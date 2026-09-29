@@ -1,4 +1,4 @@
-#include <QCoreApplication>
+#include <QApplication>
 #include <QtTest>
 #include <memory>
 
@@ -8,11 +8,13 @@
 QObject* newTestScreening();
 QObject* newTestAdjust();
 QObject* newTestExport();
+QObject* newTestPreview();
 
 int main(int argc, char** argv) {
-    QCoreApplication app(argc, argv);
+    qputenv("QT_QPA_PLATFORM", "offscreen");  // widget tests run without showing any window
+    QApplication app(argc, argv);
     int failed = 0;
-    for (QObject* (*make)() : {newTestScreening, newTestAdjust, newTestExport}) {
+    for (QObject* (*make)() : {newTestScreening, newTestAdjust, newTestExport, newTestPreview}) {
         std::unique_ptr<QObject> test(make());
         const QString output = QString("results_%1.txt,txt").arg(test->metaObject()->className());
         const QStringList args = {app.arguments().first(), "-o", output};
