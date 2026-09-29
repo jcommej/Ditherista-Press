@@ -283,7 +283,7 @@ private slots:
     // misc UI
     void treeWidgetItemChangedSlot(QTreeWidgetItem* item);
     void tabWidgetChangedSlot(int index);
-    void copySlot() const;
+    void copySlot();
     void pasteSlot();
     void editMenuAboutToShowSlot();
     void keyEventSlot(QKeyEvent* event);

@@ -38,12 +38,13 @@ QString FileManager::fileSave(const bool saveAs, QString suggestedFileName) {
         return currentFileName;
     }
     if (currentFileName.isEmpty()) {
-        suggestedFileName += currentFilter == pngFilter() || currentFilter.isEmpty() ? ".png" : ".tif";
+        suggestedFileName += currentFilter == pngFilter() || currentFilter.isEmpty() ? ".png"
+                           : currentFilter == bmpFilter() ? ".bmp" : ".tif";
         suggestedFileName = fileIoLocation + QDir::separator() + suggestedFileName;
     } else {
         suggestedFileName = currentFileName;
     }
-    const QString filters = QStringList({pngFilter(), tiffFilter(), tiffPackBitsFilter()}).join(";;");
+    const QString filters = QStringList({pngFilter(), tiffFilter(), tiffPackBitsFilter(), bmpFilter()}).join(";;");
     QString selected = currentFilter.isEmpty() ? pngFilter() : currentFilter;
     const QString fileName = QFileDialog::getSaveFileName((QWidget*)parent(),
                                                     tr("Save Film"), suggestedFileName,
@@ -59,6 +60,10 @@ QString FileManager::fileSave(const bool saveAs, QString suggestedFileName) {
 
 QString FileManager::pngFilter() {
     return tr("PNG (*.png)");
+}
+
+QString FileManager::bmpFilter() {
+    return tr("BMP (*.bmp)");
 }
 
 QString FileManager::tiffFilter() {

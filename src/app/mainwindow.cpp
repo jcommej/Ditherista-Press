@@ -349,9 +349,9 @@ QImage MainWindow::renderFilm() {
 void MainWindow::saveFile(const QString &fileName) {
     /* saves the film at the output DPI, losslessly, with the DPI in the file (see export/filmwriter.h) */
     const QString suffix = QFileInfo(fileName).suffix().toLower();
-    if (suffix != "png" && suffix != "tif" && suffix != "tiff") {
+    if (suffix != "png" && suffix != "tif" && suffix != "tiff" && suffix != "bmp") {
         notification->showText("<font color=#ec6a5e>" + tr("ERROR") + "</font>\n" +
-            tr("save as .png or .tif"), 3000);
+            tr("save as .png, .tif or .bmp"), 3000);
         return;
     }
     setMouseBusy(true);
@@ -364,6 +364,8 @@ void MainWindow::saveFile(const QString &fileName) {
     bool ok;
     if (suffix == "png") {
         ok = writePng(fileName, film, screenGeometry.dpi, &error);
+    } else if (suffix == "bmp") {
+        ok = writeBmp(fileName, film, screenGeometry.dpi, &error);
     } else {
         const TiffCompression compression = fileManager.currentSaveFilter() == FileManager::tiffPackBitsFilter()
                                                 ? TiffCompression::PackBits : TiffCompression::None;

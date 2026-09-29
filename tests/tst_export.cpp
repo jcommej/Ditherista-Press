@@ -162,6 +162,19 @@ private slots:
         QCOMPARE(tags.u32(tags.value[282] + 4), 2u);
     }
 
+    void bmpKeepsPixelsDpiAndOneBit() {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("film.bmp");
+        const QImage source = film(123, 45, 7);  // width not a multiple of 8 or 32
+        QString error;
+        QVERIFY2(writeBmp(path, toFilmImage(source), 300.0, &error), qPrintable(error));
+        QImageReader reader(path);
+        const QImage back = reader.read();
+        QCOMPARE(back.convertToFormat(QImage::Format_ARGB32), source);
+        QCOMPARE(back.depth(), 1);              // stays a 1-bit film
+        QCOMPARE(back.dotsPerMeterX(), 11811);  // 300 DPI, BMP's unit is dots per metre too
+    }
+
     void pngKeepsPixelsAndDpi() {
         QTemporaryDir dir;
         const QString path = dir.filePath("film.png");

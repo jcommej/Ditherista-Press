@@ -5,7 +5,7 @@
 #include <QImage>
 #include <QString>
 
-/* Lossless film export: PNG and TIFF, with the output DPI written into the file.
+/* Lossless film export: PNG, TIFF and BMP, with the output DPI written into the file.
  *
  * TIFF is written here rather than through Qt's plugin, for two reasons that matter on film:
  *   - resolution is stored as an exact rational per inch (300/1, ResolutionUnit = inch). Qt stores dots per metre,
@@ -29,5 +29,7 @@ QImage toFilmImage(const QImage& dithered);
 // converted to ARGB32 first. Returns false and sets `error` on failure; the file is written atomically.
 bool writeTiff(const QString& path, const QImage& image, double dpi, TiffCompression compression, QString* error);
 bool writePng(const QString& path, const QImage& image, double dpi, QString* error);
+// BMP is uncompressed, so lossless too; like PNG it stores whole dots per metre. 1-bit films stay 1-bit.
+bool writeBmp(const QString& path, const QImage& image, double dpi, QString* error);
 
 #endif // FILMWRITER_H

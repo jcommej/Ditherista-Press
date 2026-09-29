@@ -236,7 +236,8 @@ bool writeTiff(const QString& path, const QImage& source, const double dpi, cons
     return true;
 }
 
-bool writePng(const QString& path, const QImage& source, const double dpi, QString* error) {
+static bool writeWithQt(const QString& path, const QImage& source, const double dpi, const char* format,
+                        QString* error) {
     QImage image = source;
     const int dotsPerMeter = static_cast<int>(std::lround(dpi / 0.0254));
     image.setDotsPerMeterX(dotsPerMeter);
@@ -246,7 +247,7 @@ bool writePng(const QString& path, const QImage& source, const double dpi, QStri
         *error = file.errorString();
         return false;
     }
-    QImageWriter writer(&file, "png");
+    QImageWriter writer(&file, format);
     if (!writer.write(image)) {
         *error = writer.errorString();
         return false;
@@ -256,4 +257,12 @@ bool writePng(const QString& path, const QImage& source, const double dpi, QStri
         return false;
     }
     return true;
+}
+
+bool writePng(const QString& path, const QImage& image, const double dpi, QString* error) {
+    return writeWithQt(path, image, dpi, "png", error);
+}
+
+bool writeBmp(const QString& path, const QImage& image, const double dpi, QString* error) {
+    return writeWithQt(path, image, dpi, "bmp", error);
 }

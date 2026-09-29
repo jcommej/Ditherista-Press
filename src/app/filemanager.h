@@ -19,6 +19,7 @@ public:
     static QString pngFilter();
     static QString tiffFilter();
     static QString tiffPackBitsFilter();
+    static QString bmpFilter();
 private:
     /* attributes */
     bool defaultDirectory = true;
