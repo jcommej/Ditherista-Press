@@ -109,6 +109,7 @@ private:
     QLabel* screenInfoLabel = nullptr;
     QDoubleSpinBox* printWidthSpin = nullptr;
     QDoubleSpinBox* printHeightSpin = nullptr;
+    QToolButton* aspectLockButton = nullptr;  // keeps print width and height in proportion
     QImage nativeImage;          // picture as loaded, before any resampling to the output DPI
     double printWidthMm = 0.0;   // physical print size: the reference the whole pipeline keeps
     double printHeightMm = 0.0;

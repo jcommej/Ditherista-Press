@@ -5,6 +5,7 @@
 #include <QCheckBox>
 #include <QHBoxLayout>
 #include <QLineEdit>
+#include <QToolButton>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QGridLayout>
@@ -34,7 +35,7 @@ void MainWindow::setupScreenControls() {
     dpiCombo->setToolTip(tr("Output DPI: resolution of the film. The picture is resampled to it; its print size, "
                             "cells and dots keep their physical size."));
 
-    // print size, the physical reference: width and height are locked to the picture's aspect ratio
+    // print size, the physical reference; the padlock keeps width and height in proportion
     printWidthSpin = new QDoubleSpinBox(group);
     printHeightSpin = new QDoubleSpinBox(group);
     for (QDoubleSpinBox* spin : {printWidthSpin, printHeightSpin}) {
@@ -44,13 +45,24 @@ void MainWindow::setupScreenControls() {
         spin->setKeyboardTracking(false);
         spin->setEnabled(false);  // until an image is loaded
         spin->setToolTip(tr("Print size on film. Starts from the file's own resolution; editing it resamples the "
-                            "picture. Aspect ratio is kept."));
+                            "picture."));
     }
     QWidget* sizeRow = new QWidget(group);
     QHBoxLayout* sizeLayout = new QHBoxLayout(sizeRow);
     sizeLayout->setContentsMargins(0, 0, 0, 0);
+    sizeLayout->setSpacing(2);
+    aspectLockButton = new QToolButton(sizeRow);
+    aspectLockButton->setCheckable(true);
+    aspectLockButton->setChecked(true);
+    aspectLockButton->setAutoRaise(true);
+    aspectLockButton->setIconSize(QSize(14, 14));
+    QIcon lockIcon;
+    lockIcon.addFile(":/resources/lock_open.svg", QSize(), QIcon::Normal, QIcon::Off);
+    lockIcon.addFile(":/resources/lock_closed.svg", QSize(), QIcon::Normal, QIcon::On);
+    aspectLockButton->setIcon(lockIcon);
+    aspectLockButton->setToolTip(tr("Keep proportions: locked, width and height change together."));
     sizeLayout->addWidget(printWidthSpin, 1);
-    sizeLayout->addWidget(new QLabel("×", sizeRow));
+    sizeLayout->addWidget(aspectLockButton);
     sizeLayout->addWidget(printHeightSpin, 1);
 
     lpiCheck = new QCheckBox(tr("LPI"), group);
@@ -227,7 +239,8 @@ void MainWindow::outputDpiEditedSlot() {
 }
 
 void MainWindow::printWidthEditedSlot(const double widthMm) {
-    const double heightMm = widthMm * nativeImage.height() / nativeImage.width();
+    // locked: keep the current proportions (which may differ from the file's if they were unlocked before)
+    const double heightMm = aspectLockButton->isChecked() ? widthMm * printHeightMm / printWidthMm : printHeightMm;
     if (applyOutputSize(screenGeometry.dpi, widthMm, heightMm)) {
         whileBlocking(printHeightSpin)->setValue(heightMm);
     } else {
@@ -236,7 +249,7 @@ void MainWindow::printWidthEditedSlot(const double widthMm) {
 }
 
 void MainWindow::printHeightEditedSlot(const double heightMm) {
-    const double widthMm = heightMm * nativeImage.width() / nativeImage.height();
+    const double widthMm = aspectLockButton->isChecked() ? heightMm * printWidthMm / printHeightMm : printWidthMm;
     if (applyOutputSize(screenGeometry.dpi, widthMm, heightMm)) {
         whileBlocking(printWidthSpin)->setValue(widthMm);
     } else {
