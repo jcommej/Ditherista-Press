@@ -55,6 +55,7 @@ SOURCES += \
     mainwindow_helpers.cpp \
     mainwindow_screen.cpp \
     mainwindow_tone.cpp \
+    mainwindow_separation.cpp \
     adjust/filters.cpp \
     adjust/tonecurve.cpp \
     export/filmwriter.cpp \
@@ -70,7 +71,8 @@ SOURCES += \
     ui_elements/colorcopymenu.cpp \
     ui_elements/sectioncombobox.cpp \
     screening/cellresample.cpp \
-    screening/matrixstretch.cpp
+    screening/matrixstretch.cpp \
+    screening/separation.cpp
 
 HEADERS += \
     modernredux/style.h \
@@ -108,6 +110,7 @@ HEADERS += \
     screening/screengeometry.h \
     screening/cellresample.h \
     screening/matrixstretch.h \
+    screening/separation.h \
     adjust/filters.h \
     adjust/tonecurve.h \
     export/filmwriter.h
