@@ -5,6 +5,8 @@
 #include "screening/matrixstretch.h"
 #include "matrices.h"  // to read stretched matrix values
 #include <cstdlib>
+#include <algorithm>
+#include <cmath>
 #include "imagehash/imagehashmono.h"
 #include "imagehash/imagehashcolor.h"
 
@@ -179,6 +181,45 @@ private slots:
         }
         OrderedDitherMatrix_free(m);
         OrderedDitherMatrix_free(s);
+    }
+
+    static double fractionEqualAfterShift(const OrderedDitherMatrix* s, const int dx, const int dy) {
+        long same = 0, total = 0;
+        for (int y = 0; y + dy < s->height; y++) {
+            for (int x = std::max(0, -dx); x + dx < s->width && x < s->width; x++) {
+                same += s->buffer[y * s->width + x] == s->buffer[(y + dy) * s->width + x + dx];
+                total++;
+            }
+        }
+        return static_cast<double>(same) / total;
+    }
+
+    void rotatedScreenRepeatsAlongItsAngle() {
+        // 36.87 degrees (a 3-4-5 triangle): one 10 px cell along the screen is exactly (8, 6) pixels
+        std::vector<int> values(64);
+        for (int i = 0; i < 64; i++) values[i] = (i * 37) % 64;
+        OrderedDitherMatrix* m = OrderedDitherMatrix_new(8, 8, 64.0, values.data());
+        const double angle = std::atan2(3.0, 4.0) * 180.0 / 3.14159265358979323846;
+        OrderedDitherMatrix* s = stretchMatrixToCell(m, 10.0, 200, 200, angle);
+        QVERIFY(fractionEqualAfterShift(s, 8, 6) > 0.99);   // one cell along the rotated axis
+        QVERIFY(fractionEqualAfterShift(s, -6, 8) > 0.99);  // and along the perpendicular one
+        QVERIFY(fractionEqualAfterShift(s, 10, 0) < 0.8);   // but not along the unrotated one
+        OrderedDitherMatrix_free(s);
+        OrderedDitherMatrix_free(m);
+    }
+
+    void zeroAndFullTurnAreTheUnrotatedScreen() {
+        std::vector<int> values(64);
+        for (int i = 0; i < 64; i++) values[i] = (i * 37) % 64;
+        OrderedDitherMatrix* m = OrderedDitherMatrix_new(8, 8, 64.0, values.data());
+        OrderedDitherMatrix* plain = stretchMatrixToCell(m, 6.67, 90, 70);
+        for (const double angle : {0.0, 360.0}) {
+            OrderedDitherMatrix* s = stretchMatrixToCell(m, 6.67, 90, 70, angle);
+            QVERIFY(std::equal(s->buffer, s->buffer + 90 * 70, plain->buffer));
+            OrderedDitherMatrix_free(s);
+        }
+        OrderedDitherMatrix_free(plain);
+        OrderedDitherMatrix_free(m);
     }
 
     void stretchedDitherKeepsTheTone() {

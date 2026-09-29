@@ -15,6 +15,8 @@
 // MainWindow settings
 #define MIN_WINDOW_HEIGHT 624
 #define DEFAULT_WINDOW_HEIGHT 880  // Screen + extended Input Image Settings panels need the room
+#define MIN_DITHERER_LIST_HEIGHT 160  // the settings below it scroll rather than squeeze it out
+#define CHANNEL_FIELD_MIN_WIDTH 64    // LPI / angle fields of the per-ink table
 #define MIN_WINDOW_WIDTH 770
 #define MIN_SPLITTER_WIDTH 294
 

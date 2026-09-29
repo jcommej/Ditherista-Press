@@ -22,6 +22,7 @@ static const QList<int> DPI_PRESETS = {300, 600, 1200};
 void MainWindow::setupScreenControls() {
     /* builds the Screen panel and inserts it above the Input Image Settings */
     QGroupBox* group = new QGroupBox(tr("Screen"), ui->imageSettingsContainer);
+    screenGroup = group;
     QGridLayout* grid = new QGridLayout(group);
 
     dpiCombo = new QComboBox(group);
@@ -140,8 +141,15 @@ OrderedDitherMatrix* MainWindow::applyLpi(OrderedDitherMatrix* matrix, const int
     if (matrix == nullptr || !screenGeometry.lpiEnabled || !screenUsesLpi()) {
         return matrix;
     }
+    // an ink of a separation may have its own LPI and angle (see mainwindow_separation.cpp)
+    double lpi = screenGeometry.lpi;
+    double angle = 0.0;
+    if (const ChannelSettings* channel = renderChannelSettings()) {
+        lpi = channel->lpi > 0.0 ? channel->lpi : lpi;
+        angle = channel->angle;
+    }
     // cell in pixels of the image being rendered: fewer in a reduced preview, same size on film
-    OrderedDitherMatrix* stretched = stretchMatrixToCell(matrix, renderDpi / screenGeometry.lpi, width, height);
+    OrderedDitherMatrix* stretched = stretchMatrixToCell(matrix, renderDpi / lpi, width, height, angle);
     OrderedDitherMatrix_free(matrix);
     return stretched;
 }
@@ -301,6 +309,7 @@ void MainWindow::updateScreenControls() {
     lpiSpin->setEnabled(lpiApplies && g.lpiEnabled);
     dotCheck->setEnabled(!lpiApplies);
     dotSpin->setEnabled(!lpiApplies && g.dotEnabled);
+    updateChannelRowsEnabled();
 
     QStringList lines;
     if (lpiApplies && g.lpiEnabled) {

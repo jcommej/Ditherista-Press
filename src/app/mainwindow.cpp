@@ -44,6 +44,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     setupScreenControls();  // output DPI / LPI panel
     setupSeparationControls();  // CMYK / RGB films, above the Screen panel
     setupToneControls();    // shadows / midtones / highlights / blur / denoise
+    setupSettingsScroll();  // after every panel exists: they move into one scroll area
     // the two panels above take ~250 px from the ditherer list: open taller than the minimum when the screen allows
     resize(width(), std::min(DEFAULT_WINDOW_HEIGHT, screen()->availableGeometry().height() - 40));
     // Ditherista component setup
@@ -93,6 +94,7 @@ void MainWindow::tabWidgetChangedSlot(int index) {
     if (index < TAB_INDEX_PALETTE) {
         lastTabIndex = index; // holds dither tab was last active (color or mono)
         separationGroup->setVisible(index == TAB_INDEX_MONO);  // separation uses the mono ditherers
+        updateSettingsPanelHeight();
         if (index == TAB_INDEX_MONO) {      // trigger a re-dither for the active ditherer in the tab we're switching to
             ui->imageSettingsStackedWidget->setCurrentIndex(0);
             ui->graphicsView->showSourceMono(ui->showOriginalMono->checkState() == Qt::Checked);

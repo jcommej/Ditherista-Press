@@ -44,7 +44,7 @@ QImage coverageToDitherSource(const std::vector<float>& coverage, const QImage& 
 // result at the coverage plane's size.
 void cleanExtremes(QImage& film, const std::vector<float>& coverage);
 
-// simulated print of the dithered films (Format_Mono or black/white): inks multiplied on white for CMYK, added on
+// simulated print of the dithered films (Format_Mono or black/white; null for an ink left out): inks multiplied on white for CMYK, added on
 // black for RGB, so overlaps look like the press would show them
 QImage compositeFromFilms(const std::vector<QImage>& films, SeparationMode mode);
 

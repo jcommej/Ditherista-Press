@@ -18,6 +18,8 @@
 #include "screening/separation.h"
 #include <QTreeWidgetItem>
 #include <functional>
+#include <map>
+#include <QScrollArea>
 #include <vector>
 #include <QFuture>
 #include <QMainWindow>
@@ -136,6 +138,25 @@ private:
     QComboBox* separationViewCombo = nullptr;
     QComboBox* separationExportCombo = nullptr;
     QCheckBox* separationPsdCompositeCheck = nullptr;
+    struct ChannelSettings {
+        bool enabled = true;
+        double lpi = 0.0;    // 0 = follow the Screen panel's LPI
+        double angle = 0.0;  // screen angle in degrees
+    };
+    std::map<int, std::vector<ChannelSettings>> channelSettings;  // per separation mode, kept across mode changes
+    int renderChannel = -1;          // ink being rendered, for its LPI and angle; -1 = composite
+    QWidget* channelRows = nullptr;  // Ink / LPI / Angle table, rebuilt when the mode changes
+    std::vector<QWidget*> channelScreenWidgets;  // LPI and angle fields: only meaningful with an LPI screen
+    std::vector<ChannelSettings>& currentChannelSettings();
+    [[nodiscard]] const ChannelSettings* renderChannelSettings() const;
+    void rebuildChannelRows();
+    void updateChannelRowsEnabled();
+    // settings panels in a scroll area, so the ditherer list keeps its room on small screens
+    QGroupBox* screenGroup = nullptr;
+    QScrollArea* settingsScroll = nullptr;
+    QWidget* settingsPanel = nullptr;
+    void setupSettingsScroll();
+    void updateSettingsPanelHeight();
     std::vector<QImage> separationFilms;  // preview films, one per ink
     int separationFilmsFor = -1;          // dither number they were rendered with; -1 = stale
     QImage previewImage;                  // the picture at the preview's resolution, before any adjustment

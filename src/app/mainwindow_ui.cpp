@@ -2,6 +2,7 @@
 #include "consts.h"
 #include "modernredux/style.h"
 #include "ui_elements/signalblocker.h"
+#include <QTimer>
 #include <QSvgRenderer>
 
 /* This file contains:
@@ -90,6 +91,7 @@ void MainWindow::setMouseBusy(bool isBusy) {
 }
 
 void MainWindow::imageSettingsStackedWidgetIndexChangedSlot(int index) {
+    QTimer::singleShot(0, this, [this]() { updateSettingsPanelHeight(); });  // once the new page has its height
     /* adjusts the height of the 'Input Image Settings' group box, depending if dithering is in mono or in color */
     ui->imageSettingsStackedWidget->setMinimumHeight(index == IMAGE_SETTINGS_STACKED_WIDGET_MONO_INDEX ?
                      IMAGE_SETTINGS_STACKED_WIDGET_MONO_HEIGHT : IMAGE_SETTINGS_STACKED_WIDGET_COLOR_HEIGHT);

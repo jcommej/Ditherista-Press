@@ -92,11 +92,16 @@ QImage compositeFromFilms(const std::vector<QImage>& films, const SeparationMode
     if (films.empty() || films.size() != inks.size()) {
         return {};
     }
-    const int w = films[0].width();
-    const int h = films[0].height();
+    // disabled inks come as null images: they print nothing
+    const auto first = std::find_if(films.begin(), films.end(), [](const QImage& f) { return !f.isNull(); });
+    if (first == films.end()) {
+        return {};
+    }
+    const int w = first->width();
+    const int h = first->height();
     std::vector<QImage> argb;
     for (const QImage& f : films) {
-        argb.push_back(f.convertToFormat(QImage::Format_ARGB32));
+        argb.push_back(f.isNull() ? QImage() : f.convertToFormat(QImage::Format_ARGB32));
     }
     const bool additive = mode == SeparationMode::RGB;
     QImage out(w, h, QImage::Format_RGB32);
@@ -105,6 +110,9 @@ QImage compositeFromFilms(const std::vector<QImage>& films, const SeparationMode
         for (int x = 0; x < w; x++) {
             int r = additive ? 0 : 255, g = r, b = r;
             for (size_t c = 0; c < argb.size(); c++) {
+                if (argb[c].isNull()) {
+                    continue;
+                }
                 const QRgb p = reinterpret_cast<const QRgb*>(argb[c].constScanLine(y))[x];
                 if (qAlpha(p) == 0 || qRed(p) != 0) {
                     continue;  // white or transparent on the film: no ink here
