@@ -134,7 +134,7 @@ private:
     [[nodiscard]] int screenDotPixels() const;  // coarse grid for the current algorithm (1 = full resolution)
     OrderedDitherMatrix* applyLpi(OrderedDitherMatrix* matrix, int width, int height) const;
 
-    // colour separation (Mono tab), see mainwindow_separation.cpp
+    // colour separation (Color tab), see mainwindow_separation.cpp
     SeparationMode separationMode = SeparationMode::Composite;
     QGroupBox* separationGroup = nullptr;
     QComboBox* separationModeCombo = nullptr;
@@ -151,6 +151,9 @@ private:
     int renderChannel = -1;          // ink being rendered, for its LPI and angle; -1 = composite
     QWidget* channelRows = nullptr;  // Ink / LPI / Angle table, rebuilt when the mode changes
     std::vector<QWidget*> channelScreenWidgets;  // LPI and angle fields: only meaningful with an LPI screen
+    [[nodiscard]] std::vector<QRgb> paletteColours() const;           // the colour ditherers' current palette
+    [[nodiscard]] std::vector<InkChannel> separationInks() const;     // inks of the current mode
+    void refreshSeparationInks();  // View selector and ink rows, after a mode or palette change
     std::vector<ChannelSettings>& currentChannelSettings();
     [[nodiscard]] const ChannelSettings* renderChannelSettings() const;
     void rebuildChannelRows();
@@ -175,9 +178,10 @@ private:
     int separationFilmsFor = -1;          // dither number they were rendered with; -1 = stale
     QImage previewImage;                  // the picture at the preview's resolution, before any adjustment
     void setupSeparationControls();
-    [[nodiscard]] bool separationActive() const;  // Mono tab with CMYK or RGB selected
+    [[nodiscard]] bool separationActive() const;  // Color tab with CMYK, RGB or Palette selected
     void invalidateSeparation() { separationFilmsFor = -1; }
-    std::vector<QImage> renderSeparation(const QImage& working, double dpi, double upscale);
+    // `preview`: `working` is previewImage, whose colour dither the Palette mode takes from imageHashColor
+    std::vector<QImage> renderSeparation(const QImage& working, double dpi, double upscale, bool preview);
     [[nodiscard]] QImage separationView(const std::vector<QImage>& films) const;
     void showSeparation();
     std::vector<QImage> separationFilmsAtOutput();
@@ -229,6 +233,9 @@ private:
     // dithering color
     void ERR_C_dither(int* out_buf, const SubDitherType n);
     void ORD_C_dither(int* out_buf, const SubDitherType n);
+    ErrorDiffusionMatrix* colorErrorMatrix(SubDitherType n);
+    OrderedDitherMatrix* colorOrderedMatrix(SubDitherType n);
+    void ditherInkPlane(ImageHashMono& plane);  // one CMYK / RGB ink, with the current color ditherer's matrix
     // batch dithering
     BatchDitherResult ditherSingleImage(const QString& inFileName, const QString& outFileName);
     // palette and color handling

@@ -32,6 +32,9 @@ void MainWindow::refreshUiColorDitherStatus(bool resetLab, bool updateSwatches) 
     if (resetLab) {
         resetLabHCVspinBoxes();
     }
+    if (separationMode == SeparationMode::Palette) {
+        refreshSeparationInks();  // one film per colour of the new palette
+    }
 }
 
 /*************************************************
@@ -94,7 +97,7 @@ void MainWindow::tabWidgetChangedSlot(int index) {
     // TODO we may not need the lastTabIndex anymore (is lastTabIndex redundant?)
     if (index < TAB_INDEX_PALETTE) {
         lastTabIndex = index; // holds dither tab was last active (color or mono)
-        separationGroup->setVisible(index == TAB_INDEX_MONO);  // separation uses the mono ditherers
+        separationGroup->setVisible(index == TAB_INDEX_COLOR);  // separation starts from the colour picture
         updateSettingsPanelHeight();
         if (index == TAB_INDEX_MONO) {      // trigger a re-dither for the active ditherer in the tab we're switching to
             ui->imageSettingsStackedWidget->setCurrentIndex(0);
@@ -249,7 +252,7 @@ void MainWindow::reDither(const bool force) {
             imageHashColor.clearDitheredImage(current_dither_number);
         }
     }
-    if (current_dither_number < COLOR_DITHER_START && separationActive()) {  // one film per ink
+    if (current_dither_number >= COLOR_DITHER_START && separationActive()) {  // one film per ink
         if (force) {
             invalidateSeparation();
         }

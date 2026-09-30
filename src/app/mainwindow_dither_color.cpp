@@ -40,8 +40,8 @@ void MainWindow::ORD_IGR_cColorValueChangedSlot(double c) {
  * COLOR DITHERER METHODS        *
  *********************************/
 
-void MainWindow::ERR_C_dither(int* out_buf, const SubDitherType n) {
-    /* Runs the color Error Diffusion ditherer */
+ErrorDiffusionMatrix* MainWindow::colorErrorMatrix(const SubDitherType n) {
+    /* matrix of a color Error Diffusion ditherer; the caller frees it */
     ErrorDiffusionMatrix* matrix = nullptr;
     switch(n) {
         case ERR_XOT_C: matrix = get_xot_matrix(); break;
@@ -65,6 +65,12 @@ void MainWindow::ERR_C_dither(int* out_buf, const SubDitherType n) {
         case ERR_SSA_C: matrix = get_stevenson_arce_matrix(); break;
         default: qDebug() << "WARNING: requested ERR ditherer " << n << " not found"; break;
     }
+    return matrix;
+}
+
+void MainWindow::ERR_C_dither(int* out_buf, const SubDitherType n) {
+    /* Runs the color Error Diffusion ditherer */
+    ErrorDiffusionMatrix* matrix = colorErrorMatrix(n);
     if(matrix != nullptr) {
         bool serpentine = ui->ERR_C_serpentine->isChecked();
         fthread = QtConcurrent::run(error_diffusion_dither_color, colorTarget->getDitherSourceImage(),
@@ -74,8 +80,8 @@ void MainWindow::ERR_C_dither(int* out_buf, const SubDitherType n) {
     }
 }
 
-void MainWindow::ORD_C_dither(int* out_buf, const SubDitherType n) {
-    /* Runs the Ordered ditherer */
+OrderedDitherMatrix* MainWindow::colorOrderedMatrix(const SubDitherType n) {
+    /* matrix of a color Ordered ditherer, before any LPI stretch; the caller frees it */
     OrderedDitherMatrix* matrix = nullptr;
     switch(n) {
         case ORD_BLU_C: matrix = get_blue_noise_128x128(); break;
@@ -128,6 +134,12 @@ void MainWindow::ORD_C_dither(int* out_buf, const SubDitherType n) {
         } break;
         default: qDebug() << "WARNING: requested ORD_C ditherer " << n << " not found"; break;
     }
+    return matrix;
+}
+
+void MainWindow::ORD_C_dither(int* out_buf, const SubDitherType n) {
+    /* Runs the Ordered ditherer */
+    OrderedDitherMatrix* matrix = colorOrderedMatrix(n);
     if(matrix != nullptr) {
         const ColorImage* image = colorTarget->getDitherSourceImage();
         matrix = applyLpi(matrix, image->width, image->height);  // one matrix tile per screen cell
@@ -135,4 +147,33 @@ void MainWindow::ORD_C_dither(int* out_buf, const SubDitherType n) {
         runDitherThread();
         OrderedDitherMatrix_free(matrix);
     }
+}
+
+/*********************************
+ * INK FILMS OF A SEPARATION     *
+ *********************************/
+
+void MainWindow::ditherInkPlane(ImageHashMono& plane) {
+    /* one ink of a CMYK / RGB separation: its coverage plane (a grey image in `plane`) dithered in black and white
+     * with the matrix of the current color ditherer - same error diffusion or ordered matrix, same serpentine,
+     * with the ink's own LPI and angle (see renderChannel) */
+    plane.setCellSize(screenDotPixels());
+    const DitherImage* image = plane.getDitherSourceImage();  // coarse grid when dot size is on
+    uint8_t* out_buf = static_cast<uint8_t*>(calloc(static_cast<size_t>(image->width) * image->height, sizeof(uint8_t)));
+    if (current_dither_type == ERR_C) {
+        if (ErrorDiffusionMatrix* matrix = colorErrorMatrix(current_sub_dither_type)) {
+            fthread = QtConcurrent::run(error_diffusion_dither, image, matrix, ui->ERR_C_serpentine->isChecked(),
+                                        0.0, out_buf);
+            runDitherThread();
+            ErrorDiffusionMatrix_free(matrix);
+        }
+    } else if (current_dither_type == ORD_C) {
+        if (OrderedDitherMatrix* matrix = applyLpi(colorOrderedMatrix(current_sub_dither_type), image->width, image->height)) {
+            fthread = QtConcurrent::run(ordered_dither, image, matrix, 0.0, out_buf);
+            runDitherThread();
+            OrderedDitherMatrix_free(matrix);
+        }
+    }
+    plane.setImageFromDither(current_dither_number, out_buf);
+    free(out_buf);
 }

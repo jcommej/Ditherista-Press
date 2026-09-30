@@ -202,7 +202,21 @@ QJsonObject MainWindow::capturePreset() const {
 void MainWindow::applyPreset(const QJsonObject& preset) {
     /* sets every control, then renders once: reDither is held while settings change one by one */
     applyingPreset = true;
-    const bool mono = preset.value("tab").toString() != "color";
+    bool mono = preset.value("tab").toString() != "color";
+    const QJsonObject ditherer = preset.value("ditherer").toObject();
+    int subtype = ditherer.value("subtype").toInt(current_sub_dither_type);
+    const QJsonObject separation = preset.value("separation").toObject();
+    // separation used to live in the Mono tab: such a preset opens in the Color tab, with the colour version of
+    // its algorithm when there is one (error diffusion and ordered matrices)
+    if (mono && separation.value("mode").toInt(0) != static_cast<int>(SeparationMode::Composite)) {
+        for (QTreeWidgetItemIterator it(ui->treeWidgetColor); *it; ++it) {
+            if ((*it)->data(ITEM_DATA_DSUBTYPE, Qt::UserRole).toInt() == subtype + COLOR_DITHER_START) {
+                mono = false;
+                subtype += COLOR_DITHER_START;
+                break;
+            }
+        }
+    }
     const int tab = mono ? TAB_INDEX_MONO : TAB_INDEX_COLOR;
     if (ui->tabWidget->currentIndex() != tab) {
         ui->tabWidget->setCurrentIndex(tab);
@@ -231,7 +245,6 @@ void MainWindow::applyPreset(const QJsonObject& preset) {
     }
 
     // separation and inks
-    const QJsonObject separation = preset.value("separation").toObject();
     const QJsonObject inks = separation.value("inks").toObject();
     for (const QString& mode : inks.keys()) {
         std::vector<ChannelSettings> channels;
@@ -302,11 +315,10 @@ void MainWindow::applyPreset(const QJsonObject& preset) {
     }
 
     // ditherer last: selecting it loads its settings into the panel
-    const QJsonObject ditherer = preset.value("ditherer").toObject();
-    const SubDitherType subtype = static_cast<SubDitherType>(ditherer.value("subtype").toInt(current_sub_dither_type));
     const QJsonObject settings = ditherer.value("settings").toObject();
     for (const QString& key : settings.keys()) {
-        activeTreeWidget->setValue(subtype, static_cast<SettingKey>(key.toInt()), settings.value(key).toVariant());
+        activeTreeWidget->setValue(static_cast<SubDitherType>(subtype), static_cast<SettingKey>(key.toInt()),
+                                   settings.value(key).toVariant());
     }
     for (QTreeWidgetItemIterator it(activeTreeWidget); *it; ++it) {
         if ((*it)->data(ITEM_DATA_DSUBTYPE, Qt::UserRole).toInt() == subtype) {
