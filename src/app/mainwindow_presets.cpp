@@ -176,10 +176,12 @@ QJsonObject MainWindow::capturePreset() const {
 
     // palette: its source and settings, plus the colours themselves in case the source is gone on load
     QJsonArray colours;
-    if (cachedPalette != nullptr) {
-        for (size_t i = 0; i < cachedPalette->target_palette->size; i++) {
-            const ByteColor* c = BytePalette_get(cachedPalette->target_palette, i);
-            colours.append(QColor(c->r, c->g, c->b, c->a).name(QColor::HexArgb));
+    QJsonArray locked;  // indices of the locked colours (palette editor)
+    const PaletteEntries entries = currentPaletteEntries();
+    for (size_t i = 0; i < entries.size(); i++) {
+        colours.append(QColor::fromRgb(entries[i].colour).name(QColor::HexArgb));
+        if (entries[i].locked) {
+            locked.append(static_cast<int>(i));
         }
     }
     preset.insert("palette", QJsonObject{
@@ -191,7 +193,7 @@ QJsonObject MainWindow::capturePreset() const {
         {"unique", ui->palGenUniqueColorsCheck->isChecked()}, {"bw", ui->palGenBWCheck->isChecked()},
         {"rgb", ui->palGenRGBCheck->isChecked()}, {"cmy", ui->palGenCMYCheck->isChecked()},
         {"comparison", ui->colorComparisonCombo->currentIndex()},
-        {"entries", colours}});
+        {"entries", colours}, {"locked", locked}});
     return preset;
 }
 
@@ -386,6 +388,12 @@ void MainWindow::applyPresetPalette(const QJsonObject& palette) {
             }
             BytePalette_free(customPalette);
             customPalette = colours;
+            customLocks.assign(static_cast<size_t>(entries.size()), false);
+            for (const QJsonValue& index : palette.value("locked").toArray()) {
+                if (index.toInt(-1) >= 0 && index.toInt() < entries.size()) {
+                    customLocks[static_cast<size_t>(index.toInt())] = true;
+                }
+            }
             if (ui->paletteSourceCombo->count() == PALETTE_CUSTOM) {  // no "custom" entry yet
                 ui->paletteSourceCombo->addItem(tr("custom"));
             }

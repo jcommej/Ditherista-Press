@@ -137,7 +137,9 @@ QString PaletteModel::toPaintNet(const PaletteEntries& palette, const QString& n
     return lines.join("\n") + "\n";
 }
 
-bool PaletteModel::fromPaintNet(const QString& text, PaletteEntries* palette, QString* error, bool* truncated) {
+bool PaletteModel::fromPaintNet(const QString& text, PaletteEntries* palette, QString* error, bool* truncated,
+                                bool* tooFew) {
+    if (tooFew) *tooFew = false;
     static const QRegularExpression colourLine("^([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$");
     static const QRegularExpression lockedLine("^;\\s*Locked:\\s*([0-9,\\s]*)$", QRegularExpression::CaseInsensitiveOption);
     PaletteEntries entries;
@@ -149,8 +151,6 @@ bool PaletteModel::fromPaintNet(const QString& text, PaletteEntries* palette, QS
             for (const QString& n : lock.captured(1).split(',', Qt::SkipEmptyParts)) {
                 locked.push_back(n.trimmed().toInt() - 1);
             }
-        } else if (line.isEmpty() || line.startsWith(';')) {
-            continue;
         } else if (colourLine.match(line).hasMatch()) {
             if (static_cast<int>(entries.size()) >= MAX_COLOURS) {
                 dropped = true;
@@ -159,13 +159,12 @@ bool PaletteModel::fromPaintNet(const QString& text, PaletteEntries* palette, QS
             QRgb colour;
             parseHexColour(line, &colour);
             entries.push_back({colour, false});
-        } else {
-            if (error) *error = QObject::tr("not a palette line: %1").arg(line.left(40));
-            return false;
         }
+        // anything else - comments, blank lines, a header another program wrote - is skipped, as upstream did
     }
     if (static_cast<int>(entries.size()) < MIN_COLOURS) {
         if (error) *error = QObject::tr("a palette needs at least %1 colours").arg(MIN_COLOURS);
+        if (tooFew) *tooFew = true;
         return false;
     }
     for (const int i : locked) {

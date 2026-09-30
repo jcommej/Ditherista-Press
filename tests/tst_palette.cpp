@@ -92,16 +92,39 @@ private slots:
         QCOMPARE(p.size(), size_t(2));
         QCOMPARE(p[1].colour, qRgb(0, 255, 0));
         QVERIFY(!p[0].locked);
-        QVERIFY(!PaletteModel::fromPaintNet(";one colour\nFF000000\n", &p, &error));
+        bool tooFew = false;
+        QVERIFY(!PaletteModel::fromPaintNet(";one colour\nFF000000\n", &p, &error, nullptr, &tooFew));
         QVERIFY(!error.isEmpty());
-        QVERIFY(!PaletteModel::fromPaintNet("FF000000\nFFFFFF\nnot a colour\n", &p, &error));
+        QVERIFY(tooFew);
         QCOMPARE(p.size(), size_t(2));  // untouched on failure
+        // other lines are skipped, as the upstream reader did
+        QVERIFY(PaletteModel::fromPaintNet("GIMP Palette\nFF000000\nFFFFFF\nnot a colour\n", &p, &error, nullptr, &tooFew));
+        QVERIFY(!tooFew);
+        QCOMPARE(p.size(), size_t(2));
         QString many;
         for (int i = 0; i < 300; i++) many += "FF102030\n";
         bool truncated = false;
         QVERIFY(PaletteModel::fromPaintNet(many, &p, &error, &truncated));
         QVERIFY(truncated);
         QCOMPARE(static_cast<int>(p.size()), PaletteModel::MAX_COLOURS);
+    }
+
+    void everyBuiltInPaletteReads() {
+        // the palettes shipped in resources/palettes now go through this reader
+        const QDir dir(QFileInfo(QString(__FILE__)).dir().filePath("../src/app/resources/palettes"));
+        const QStringList files = dir.entryList({"*.pal"}, QDir::Files);
+        QVERIFY(files.size() > 40);
+        for (const QString& name : files) {
+            QFile file(dir.filePath(name));
+            QVERIFY(file.open(QIODevice::ReadOnly | QIODevice::Text));
+            const QString text = QString::fromUtf8(file.readAll());
+            PaletteEntries p;
+            QString error;
+            QVERIFY2(PaletteModel::fromPaintNet(text, &p, &error), qPrintable(name + ": " + error));
+            // as many colours as the file's colour lines
+            const qsizetype lines = text.split('\n').filter(QRegularExpression("^\\s*[0-9a-fA-F]{6}([0-9a-fA-F]{2})?\\s*$")).size();
+            QCOMPARE(static_cast<qsizetype>(p.size()), std::min<qsizetype>(lines, PaletteModel::MAX_COLOURS));
+        }
     }
 
     void historyUndoesAndRedoes() {

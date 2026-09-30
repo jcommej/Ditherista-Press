@@ -64,6 +64,8 @@ SOURCES += \
     color/colorspace.cpp \
     palette/palettemodel.cpp \
     mainwindow_presets.cpp \
+    mainwindow_palette_editor.cpp \
+    palette/paletteeditor.cpp \
     treewidget.cpp \
     imagehash/imagehash.cpp \
     imagehash/imagehashcolor.cpp \
@@ -122,7 +124,8 @@ HEADERS += \
     export/psdwriter.h \
     presets/presetstore.h \
     color/colorspace.h \
-    palette/palettemodel.h
+    palette/palettemodel.h \
+    palette/paletteeditor.h
 
 FORMS += \
     mainwindow.ui \

@@ -29,6 +29,10 @@
         <file>resources/times_disabled.svg</file>
         <file>resources/lock_closed.svg</file>
         <file>resources/lock_open.svg</file>
+        <file>resources/trash.svg</file>
+        <file>resources/trash_disabled.svg</file>
+        <file>resources/shuffle.svg</file>
+        <file>resources/shuffle_disabled.svg</file>
         <file>application_en_US.qm</file>
         <file>resources/palettes/p_c64.pal</file>
         <file>resources/palettes/p_cga0.pal</file>

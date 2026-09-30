@@ -45,9 +45,11 @@ namespace PaletteModel {
 
     // Paint.NET palette file with the locks as a comment
     QString toPaintNet(const PaletteEntries& palette, const QString& name);
-    // reads what toPaintNet writes, and any Paint.NET palette: RRGGBB or AARRGGBB lines (alpha ignored), ';'
-    // comments. Fails with a message below 2 colours; beyond 256 the rest is dropped and *truncated set.
-    bool fromPaintNet(const QString& text, PaletteEntries* palette, QString* error, bool* truncated = nullptr);
+    // reads what toPaintNet writes, and any Paint.NET palette: RRGGBB or AARRGGBB lines (alpha ignored); other
+    // lines are skipped, as Ditherista always has. Fails with a message below 2 colours (*tooFew set); beyond 256
+    // the rest is dropped and *truncated set.
+    bool fromPaintNet(const QString& text, PaletteEntries* palette, QString* error, bool* truncated = nullptr,
+                      bool* tooFew = nullptr);
 }
 
 /* Undo / redo for the palette editor: whole-palette snapshots, which are small (256 colours at most). Every
