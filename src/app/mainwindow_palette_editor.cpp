@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QRandomGenerator>
+#include <QScrollArea>
 
 /* This file contains:
  * - the palette editor of the Palette tab: editable HEX, lock, delete and randomize per colour, Add Color,
@@ -31,6 +32,24 @@ void MainWindow::setupPaletteEditor() {
     }
     ui->colorListWidget->hide();
     ui->savePaletteButton->hide();  // the editor's Save Palette does the same, for any palette source
+
+    // the Palette tab scrolls: in a short window its settings, the colours and the buttons below them stay
+    // reachable instead of being cut off
+    if (QGridLayout* tabLayout = qobject_cast<QGridLayout*>(ui->tabPalette->layout())) {
+        QLayoutItem* content = tabLayout->itemAtPosition(0, 0);
+        if (QLayout* column = content != nullptr ? content->layout() : nullptr) {
+            tabLayout->removeItem(column);
+            column->setParent(nullptr);
+            QWidget* panel = new QWidget();
+            panel->setLayout(column);  // the groups inside move to the panel
+            QScrollArea* scroll = new QScrollArea(ui->tabPalette);
+            scroll->setWidget(panel);
+            scroll->setWidgetResizable(true);
+            scroll->setFrameShape(QFrame::NoFrame);
+            scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+            tabLayout->addWidget(scroll, 0, 0);
+        }
+    }
 
     connect(paletteEditor, &PaletteEditor::colourEdited, this, [this](const int index, const QRgb colour) {
         PaletteEntries palette = currentPaletteEntries();
