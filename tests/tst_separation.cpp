@@ -116,6 +116,46 @@ private slots:
         QCOMPARE(compositeFromFilms({ink, ink, none}, SeparationMode::RGB).pixel(0, 0), qRgb(255, 255, 0));
         QCOMPARE(compositeFromFilms({none, none, none}, SeparationMode::RGB).pixel(0, 0), qRgb(0, 0, 0));
     }
+
+    void paletteInksAreNamedForFiles() {
+        const auto inks = paletteInks({qRgb(0xE0, 0x3C, 0x28), qRgba(0, 0, 255, 128)});
+        QCOMPARE(inks.size(), size_t(2));
+        QCOMPARE(inks[0].name, QString("01_E03C28"));
+        QCOMPARE(inks[1].name, QString("02_0000FF"));
+        QCOMPARE(inks[1].ink, qRgb(0, 0, 255));  // the ink is opaque whatever the palette's alpha
+        QVERIFY(channelsFor(SeparationMode::Palette).empty());
+    }
+
+    void paletteSplitGivesEachPixelToOneFilm() {
+        // a 4 x 1 dither: red, white, blue, transparent
+        const std::vector<QRgb> palette{qRgb(255, 0, 0), qRgb(255, 255, 255), qRgb(0, 0, 255)};
+        QImage dithered(4, 1, QImage::Format_ARGB32);
+        dithered.setPixel(0, 0, qRgb(255, 0, 0));
+        dithered.setPixel(1, 0, qRgb(255, 255, 255));
+        dithered.setPixel(2, 0, qRgb(0, 0, 255));
+        dithered.setPixel(3, 0, qRgba(0, 0, 0, 0));
+        const auto films = splitByPalette(dithered, palette, {true, true, true});
+        QCOMPARE(films.size(), size_t(3));
+        const auto ink = [&](const size_t film, const int x) { return qRed(films[film].pixel(x, 0)) == 0; };
+        QVERIFY(ink(0, 0) && !ink(0, 1) && !ink(0, 2) && !ink(0, 3));
+        QVERIFY(!ink(1, 0) && ink(1, 1) && !ink(1, 2) && !ink(1, 3));
+        QVERIFY(!ink(2, 0) && !ink(2, 1) && ink(2, 2) && !ink(2, 3));
+        // the simulated print of the films is the dither again (transparent prints as paper)
+        const QImage print = compositeFromFilms(films, paletteInks(palette), false);
+        for (int x = 0; x < 3; x++) QCOMPARE(print.pixel(x, 0), dithered.pixel(x, 0));
+        QCOMPARE(print.pixel(3, 0), qRgb(255, 255, 255));
+    }
+
+    void paletteSplitSkipsDisabledAndRepeatedColours() {
+        // white left out, and a palette listing red twice: red prints once, on the first red film
+        const std::vector<QRgb> palette{qRgb(255, 0, 0), qRgb(255, 255, 255), qRgb(255, 0, 0)};
+        const auto films = splitByPalette(solid(qRgb(255, 0, 0), 2, 2), palette, {true, false, true});
+        QCOMPARE(inkFraction(films[0]), 1.0);
+        QVERIFY(films[1].isNull());
+        QCOMPARE(inkFraction(films[2]), 0.0);
+        // missing entries in `wanted` count as disabled
+        QVERIFY(splitByPalette(solid(qRgb(255, 0, 0), 2, 2), palette, {true})[2].isNull());
+    }
 };
 
 QObject* newTestSeparation() { return new TestSeparation; }

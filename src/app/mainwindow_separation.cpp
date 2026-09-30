@@ -16,11 +16,12 @@
 #include <QLabel>
 
 /* This file contains:
- * - the Color separation panel of the Mono tab and the rendering of one film per ink, see screening/separation.h
+ * - the Color separation panel of the Color tab and the rendering of one film per ink, see screening/separation.h
  *
- * Each ink is a coverage plane dithered by the current mono ditherer - with its LPI or dot size - into its own
- * black and white film. The planes come from the colour picture with the Mono tab's Input Image Settings
- * applied, so the sliders the user sees are the ones that act.
+ * CMYK / RGB: each ink is a coverage plane dithered in black and white with the matrix of the current colour
+ * ditherer - with its LPI or dot size - into its own film (ditherInkPlane).
+ * Palette: the colour dither itself, one film per palette colour.
+ * Both start from the picture with the Color tab's Input Image Settings applied.
  */
 
 void MainWindow::setupSeparationControls() {
@@ -28,12 +29,15 @@ void MainWindow::setupSeparationControls() {
     QGridLayout* grid = new QGridLayout(separationGroup);
 
     separationModeCombo = new QComboBox(separationGroup);
-    separationModeCombo->addItem(tr("Composite (grey)"), static_cast<int>(SeparationMode::Composite));
+    separationModeCombo->addItem(tr("Composite (colour)"), static_cast<int>(SeparationMode::Composite));
     separationModeCombo->addItem(tr("CMYK - 4 films"), static_cast<int>(SeparationMode::CMYK));
     separationModeCombo->addItem(tr("RGB - 3 films"), static_cast<int>(SeparationMode::RGB));
-    separationModeCombo->setToolTip(tr("Composite: one film from the grey image, as in standard Ditherista.\n"
+    separationModeCombo->addItem(tr("Palette - 1 film per colour"), static_cast<int>(SeparationMode::Palette));
+    separationModeCombo->setToolTip(tr("Composite: the colour dither, as in standard Ditherista.\n"
                                        "CMYK / RGB: one black and white film per ink, each dithered with the "
-                                       "current algorithm and screen settings."));
+                                       "current algorithm's matrix and screen settings.\n"
+                                       "Palette: the colour dither with the current palette, one film per "
+                                       "palette colour; inks never overlap."));
     separationViewCombo = new QComboBox(separationGroup);
     separationViewCombo->setToolTip(tr("Preview the simulated print, or one film at a time (black = ink)."));
     separationExportCombo = new QComboBox(separationGroup);
@@ -80,29 +84,50 @@ void MainWindow::setupSeparationControls() {
 }
 
 bool MainWindow::separationActive() const {
-    return separationMode != SeparationMode::Composite && lastTabIndex == TAB_INDEX_MONO;
+    return separationMode != SeparationMode::Composite && lastTabIndex == TAB_INDEX_COLOR;
+}
+
+std::vector<QRgb> MainWindow::paletteColours() const {
+    std::vector<QRgb> colours;
+    if (cachedPalette != nullptr && cachedPalette->target_palette != nullptr) {
+        for (size_t i = 0; i < cachedPalette->target_palette->size; i++) {
+            const ByteColor* c = BytePalette_get(cachedPalette->target_palette, i);
+            colours.push_back(qRgb(c->r, c->g, c->b));
+        }
+    }
+    return colours;
+}
+
+std::vector<InkChannel> MainWindow::separationInks() const {
+    return separationMode == SeparationMode::Palette ? paletteInks(paletteColours()) : channelsFor(separationMode);
+}
+
+void MainWindow::refreshSeparationInks() {
+    /* view: the simulated print, then each film; and one row per ink */
+    const int view = separationViewCombo->currentIndex();
+    QSignalBlocker blocker(separationViewCombo);
+    separationViewCombo->clear();
+    separationViewCombo->addItem(tr("Simulated print"));
+    for (const InkChannel& channel : separationInks()) {
+        separationViewCombo->addItem(tr("%1 film").arg(channel.name));
+    }
+    separationViewCombo->setCurrentIndex(view < separationViewCombo->count() ? std::max(view, 0) : 0);
+    rebuildChannelRows();
+    invalidateSeparation();
+    updateSettingsPanelHeight();
 }
 
 void MainWindow::separationModeChangedSlot(int) {
     separationMode = static_cast<SeparationMode>(separationModeCombo->currentData().toInt());
-    // view: the simulated print, then each film
-    QSignalBlocker blocker(separationViewCombo);
-    separationViewCombo->clear();
-    separationViewCombo->addItem(tr("Simulated print"));
-    for (const InkChannel& channel : channelsFor(separationMode)) {
-        separationViewCombo->addItem(tr("%1 film").arg(channel.name));
-    }
+    whileBlocking(separationViewCombo)->setCurrentIndex(0);  // other inks: start on the simulated print
+    refreshSeparationInks();
     const bool separating = separationMode != SeparationMode::Composite;
-    rebuildChannelRows();
     separationViewCombo->setEnabled(separating);
     separationExportCombo->setEnabled(separating);
     separationPsdCompositeCheck->setEnabled(separating);
     separationPsdLayoutCombo->setEnabled(separating);
-    invalidateSeparation();
-    updateSettingsPanelHeight();
     if (!firstLoad) {
-        imageHashMono.clearAllDitheredImages();  // back to Composite must show the grey dither again
-        ui->treeWidgetMono->clearAllDitherFlags();
+        ui->treeWidgetColor->clearAllDitherFlags();  // the flags followed the films, not the colour dithers
         reDither(false);
     }
 }
@@ -113,32 +138,47 @@ void MainWindow::separationViewChangedSlot(int) {
     }
 }
 
-std::vector<QImage> MainWindow::renderSeparation(const QImage& working, const double dpi, const double upscale) {
-    /* one dithered film per ink for `working` (the unadjusted picture at `dpi`): the Mono tab's adjustments are
-     * applied to the colour picture, split into coverage planes, and each plane goes through the current mono
-     * ditherer. Only one channel's buffers are alive at a time. */
+std::vector<QImage> MainWindow::renderSeparation(const QImage& working, const double dpi, const double upscale,
+                                                 const bool preview) {
+    /* one dithered film per ink for `working` (the unadjusted picture at `dpi`), with the Color tab's adjustments.
+     * CMYK / RGB: the adjusted picture is split into coverage planes and each one is dithered on its own; only
+     * one channel's buffers are alive at a time. Palette: the colour dither is split by palette colour. */
+    const std::vector<ChannelSettings>& settings = currentChannelSettings();
+    const double previousDpi = renderDpi;
+    renderDpi = dpi;  // LPI cells and dot size at this resolution
+    if (separationMode == SeparationMode::Palette) {
+        std::vector<bool> wanted;
+        for (const ChannelSettings& ink : settings) {
+            wanted.push_back(ink.enabled);
+        }
+        std::vector<QImage> films;
+        if (preview) {  // the Composite view's own dither, cached
+            if (!imageHashColor.hasDitheredImage(current_dither_number)) {
+                ditherColorInto(imageHashColor);
+            }
+            films = splitByPalette(*imageHashColor.getDitheredImage(current_dither_number), paletteColours(), wanted);
+        } else {
+            ImageHashColor film;
+            film.copyAdjustmentsFrom(imageHashColor);
+            film.pixelsPerMm = dpi / MM_PER_INCH;
+            film.denoiseScale = upscale;
+            film.setSourceImage(&working, true);
+            ditherColorInto(film);  // same palette as the preview
+            films = splitByPalette(*film.getDitheredImage(current_dither_number), paletteColours(), wanted);
+        }
+        renderDpi = previousDpi;
+        return films;
+    }
     std::vector<std::vector<float>> planes;
     {
         ImageHashColor colour;
-        colour.brightness = imageHashMono.brightness;
-        colour.contrast = imageHashMono.contrast;
-        colour.gamma = imageHashMono.gamma;
-        colour.blacks = imageHashMono.blacks;
-        colour.shadows = imageHashMono.shadows;
-        colour.midtones = imageHashMono.midtones;
-        colour.highlights = imageHashMono.highlights;
-        colour.whites = imageHashMono.whites;
-        colour.blur = imageHashMono.blur;
-        colour.denoise = imageHashMono.denoise;
+        colour.copyAdjustmentsFrom(imageHashColor);
         colour.pixelsPerMm = dpi / MM_PER_INCH;
         colour.denoiseScale = upscale;
         colour.setSourceImage(&working, true);
         planes = separate(*colour.getSourceQImage(), separationMode);
     }
-    const double previousDpi = renderDpi;
-    renderDpi = dpi;  // LPI cells and dot size at this resolution
     std::vector<QImage> films;
-    const std::vector<ChannelSettings>& settings = currentChannelSettings();
     for (size_t i = 0; i < planes.size(); i++) {
         const std::vector<float>& plane = planes[i];
         if (!settings[i].enabled) {
@@ -150,7 +190,7 @@ std::vector<QImage> MainWindow::renderSeparation(const QImage& working, const do
         ImageHashMono channel;  // neutral adjustments: they were applied on the colour side
         channel.pixelsPerMm = dpi / MM_PER_INCH;
         channel.setSourceImage(&source);
-        ditherMonoInto(channel);
+        ditherInkPlane(channel);
         QImage film = *channel.getDitheredImage(current_dither_number);
         cleanExtremes(film, plane);  // clear film where there is no ink at all, solid where it is full
         films.push_back(film);
@@ -164,7 +204,7 @@ QImage MainWindow::separationView(const std::vector<QImage>& films) const {
     /* what the View selector shows: the simulated print, or one film */
     const int view = separationViewCombo->currentIndex();
     if (view <= 0 || view > static_cast<int>(films.size())) {
-        const QImage print = compositeFromFilms(films, separationMode);
+        const QImage print = compositeFromFilms(films, separationInks(), separationMode == SeparationMode::RGB);
         if (!print.isNull()) {
             return print;
         }
@@ -180,13 +220,13 @@ void MainWindow::showSeparation() {
     /* displays the separation, rendering the preview films first if the settings changed */
     if (separationFilmsFor != current_dither_number) {
         separationFilms = renderSeparation(previewImage, renderDpi,
-                                           static_cast<double>(previewImage.width()) / nativeImage.width());
+                                           static_cast<double>(previewImage.width()) / nativeImage.width(), true);
         separationFilmsFor = current_dither_number;
-        ui->treeWidgetMono->setCurrentItemDitherFlag(true);
+        ui->treeWidgetColor->setCurrentItemDitherFlag(true);
     }
     const QImage shown = separationView(separationFilms);
-    ui->graphicsView->setDitherImageMono(&shown, ui->treeWidgetMono->getCurrentDitherFileName());
-    ui->graphicsView->showSourceMono(ui->showOriginalMono->checkState() == Qt::Checked);
+    ui->graphicsView->setDitherImageColor(&shown, ui->treeWidgetColor->getCurrentDitherFileName());
+    ui->graphicsView->showSourceColor(ui->showOriginalColor->checkState() == Qt::Checked);
 }
 
 std::vector<QImage> MainWindow::separationFilmsAtOutput() {
@@ -199,7 +239,7 @@ std::vector<QImage> MainWindow::separationFilmsAtOutput() {
     }
     const QSize film(pixelsFor(printWidthMm, screenGeometry.dpi), pixelsFor(printHeightMm, screenGeometry.dpi));
     const QImage full = nativeImage.scaled(film, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    return renderSeparation(full, screenGeometry.dpi, static_cast<double>(film.width()) / nativeImage.width());
+    return renderSeparation(full, screenGeometry.dpi, static_cast<double>(film.width()) / nativeImage.width(), false);
 }
 
 bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* written) {
@@ -216,8 +256,9 @@ bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* wr
         return writeTiff(path, image, screenGeometry.dpi, compression, error);
     };
     *written = 0;
+    const std::vector<InkChannel> channels = separationInks();
+    const bool additive = separationMode == SeparationMode::RGB;
     if (suffix == "psd") {  // one document: the print (or white) plus every ink as a spot channel
-        const std::vector<InkChannel> channels = channelsFor(separationMode);
         std::vector<PsdSpotChannel> spots;
         for (size_t i = 0; i < films.size(); i++) {
             if (!films[i].isNull()) {
@@ -225,19 +266,17 @@ bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* wr
             }
         }
         const PsdInkLayout layout = static_cast<PsdInkLayout>(separationPsdLayoutCombo->currentData().toInt());
-        QImage composite = compositeFromFilms(films, separationMode);
+        QImage composite = compositeFromFilms(films, channels, additive);
         if (layout == PsdInkLayout::SpotChannels && !separationPsdCompositeCheck->isChecked()) {
             composite.fill(Qt::white);  // with layers, the image must match what the layers show
         }
-        *written = writePsd(fileName, composite, spots, screenGeometry.dpi, error, layout,
-                            separationMode == SeparationMode::RGB) ? 1 : 0;
+        *written = writePsd(fileName, composite, spots, screenGeometry.dpi, error, layout, additive) ? 1 : 0;
         return *written == 1;
     }
     if (separationExportCombo->currentIndex() == 1) {
-        *written = write(fileName, compositeFromFilms(films, separationMode)) ? 1 : 0;
+        *written = write(fileName, compositeFromFilms(films, channels, additive)) ? 1 : 0;
         return *written == 1;
     }
-    const std::vector<InkChannel> channels = channelsFor(separationMode);
     for (size_t i = 0; i < films.size(); i++) {
         if (films[i].isNull()) {
             continue;  // disabled ink
@@ -258,6 +297,17 @@ bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* wr
 std::vector<MainWindow::ChannelSettings>& MainWindow::currentChannelSettings() {
     /* settings for the inks of the current mode, created with the usual screen printing angles */
     std::vector<ChannelSettings>& settings = channelSettings[static_cast<int>(separationMode)];
+    if (separationMode == SeparationMode::Palette) {
+        // a palette of another size: every colour prints, except white, taken for the paper
+        const std::vector<QRgb> palette = paletteColours();
+        if (settings.size() != palette.size()) {
+            settings.assign(palette.size(), ChannelSettings());
+            for (size_t i = 0; i < palette.size(); i++) {
+                settings[i].enabled = palette[i] != qRgb(255, 255, 255);
+            }
+        }
+        return settings;
+    }
     if (settings.size() != channelsFor(separationMode).size()) {
         // CMYK: the classic 15 / 75 / 0 / 45 degrees, yellow - the least visible - on the moire-prone 0;
         // RGB: three angles 30 degrees apart
@@ -280,30 +330,49 @@ const MainWindow::ChannelSettings* MainWindow::renderChannelSettings() const {
 }
 
 void MainWindow::rebuildChannelRows() {
-    /* one row per ink: enabled, LPI (or the Screen LPI), angle */
+    /* one row per ink: enabled, LPI (or the Screen LPI), angle. Palette inks come from a single colour dither,
+     * which has one screen for all: only the enabled box, with the ink's colour. */
     delete channelRows->layout();
     for (QWidget* child : channelRows->findChildren<QWidget*>(Qt::FindDirectChildrenOnly)) {
         delete child;
     }
     channelScreenWidgets.clear();
-    const std::vector<InkChannel> inks = channelsFor(separationMode);
+    const std::vector<InkChannel> inks = separationInks();
     channelRows->setVisible(!inks.empty());
     if (inks.empty()) {
         return;
     }
+    const bool palette = separationMode == SeparationMode::Palette;
     QGridLayout* grid = new QGridLayout(channelRows);
     grid->setContentsMargins(0, 4, 0, 0);
     grid->setColumnStretch(1, 1);
     grid->setColumnStretch(2, 1);
     grid->addWidget(new QLabel(tr("Ink"), channelRows), 0, 0);
-    grid->addWidget(new QLabel(tr("LPI"), channelRows), 0, 1);
-    grid->addWidget(new QLabel(tr("Angle"), channelRows), 0, 2);
+    if (!palette) {
+        grid->addWidget(new QLabel(tr("LPI"), channelRows), 0, 1);
+        grid->addWidget(new QLabel(tr("Angle"), channelRows), 0, 2);
+    }
     std::vector<ChannelSettings>& settings = currentChannelSettings();
+    const auto changed = [this]() {
+        invalidateSeparation();
+        if (!firstLoad) reDither(false);
+    };
     for (size_t i = 0; i < inks.size(); i++) {
         const int row = static_cast<int>(i) + 1;
         QCheckBox* enabled = new QCheckBox(inks[i].name, channelRows);
         enabled->setChecked(settings[i].enabled);
         enabled->setToolTip(tr("Render and save this ink's film"));
+        connect(enabled, &QCheckBox::toggled, this, [this, i, changed](const bool on) {
+            currentChannelSettings()[i].enabled = on;
+            changed();
+        });
+        if (palette) {
+            QPixmap swatch(12, 12);
+            swatch.fill(QColor::fromRgb(inks[i].ink));
+            enabled->setIcon(QIcon(swatch));
+            grid->addWidget(enabled, row, 0, 1, 3);
+            continue;
+        }
         QDoubleSpinBox* lpi = new QDoubleSpinBox(channelRows);
         lpi->setRange(0.0, SCREEN_MAX_LPI);
         lpi->setDecimals(1);
@@ -329,14 +398,6 @@ void MainWindow::rebuildChannelRows() {
         grid->addWidget(angle, row, 2);
         channelScreenWidgets.push_back(lpi);
         channelScreenWidgets.push_back(angle);
-        const auto changed = [this]() {
-            invalidateSeparation();
-            if (!firstLoad) reDither(false);
-        };
-        connect(enabled, &QCheckBox::toggled, this, [this, i, changed](const bool on) {
-            currentChannelSettings()[i].enabled = on;
-            changed();
-        });
         connect(lpi, &QDoubleSpinBox::valueChanged, this, [this, i, changed](const double value) {
             currentChannelSettings()[i].lpi = value;
             changed();

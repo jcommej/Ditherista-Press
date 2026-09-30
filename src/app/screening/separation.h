@@ -21,16 +21,24 @@
  *
  * The coverage planes are handed to the mono ditherers through an ordinary grey image (coverageToDitherSource):
  * a pixel whose linear lightness is 1 - c gets a fraction c of ink from any ditherer.
+ *
+ * Palette separation works the other way round: the colour ditherer maps every pixel to exactly one palette
+ * colour, and each colour becomes a film (splitByPalette). Inks never overlap, as in spot colour printing with
+ * an indexed palette.
  */
 
-enum class SeparationMode { Composite, RGB, CMYK };
+enum class SeparationMode { Composite, RGB, CMYK, Palette };  // stored in presets: append only
 
 struct InkChannel {
     QString name;  // used in file names: picture_Cyan.tif
     QRgb ink;      // colour for the simulated composite
 };
 
+// inks of RGB and CMYK; empty for Composite and Palette, whose inks come from the palette (paletteInks)
 std::vector<InkChannel> channelsFor(SeparationMode mode);
+
+// one ink per palette entry, named by its position and colour for the file names: 01_E03C28
+std::vector<InkChannel> paletteInks(const std::vector<QRgb>& palette);
 
 // coverage planes (0..1, width x height each) for every channel of `mode`, from an sRGB image
 std::vector<std::vector<float>> separate(const QImage& srgb, SeparationMode mode);
@@ -47,5 +55,13 @@ void cleanExtremes(QImage& film, const std::vector<float>& coverage);
 // simulated print of the dithered films (Format_Mono or black/white; null for an ink left out): inks multiplied on white for CMYK, added on
 // black for RGB, so overlaps look like the press would show them
 QImage compositeFromFilms(const std::vector<QImage>& films, SeparationMode mode);
+// same with any inks; `additive`: light on black (RGB) rather than ink multiplied on white
+QImage compositeFromFilms(const std::vector<QImage>& films, const std::vector<InkChannel>& inks, bool additive);
+
+// films of a colour dither whose pixels are palette colours: film i is black where the pixel is palette[i] (the
+// first entry of that colour, if the palette repeats one), white elsewhere and where the pixel is transparent.
+// `wanted[i]` false (or missing) leaves film i null, as for a disabled ink.
+std::vector<QImage> splitByPalette(const QImage& dithered, const std::vector<QRgb>& palette,
+                                   const std::vector<bool>& wanted);
 
 #endif // SEPARATION_H

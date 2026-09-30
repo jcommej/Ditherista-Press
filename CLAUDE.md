@@ -84,8 +84,10 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
                            → tone curve (blacks, shadows, midtones, highlights, whites)
           │
           ├─ Composite ──► mono or colour ditherer ──────────────────────────► film
-          └─ Separation ─► CMYK/RGB coverage planes ─► mono ditherer per ink ─► one film per ink
-                              (LPI: stretched + rotated matrix; else dot size: coarse grid)
+          └─ Separation (Color tab)
+               ├─ CMYK/RGB ─► coverage planes ─► colour algorithm's matrix, in b/w, per ink ─► one film per ink
+               │                 (LPI: stretched + rotated matrix; else dot size: coarse grid)
+               └─ Palette ──► colour ditherer with the palette ─► one film per palette colour
                                                     │
                                     save: PNG / TIFF / BMP (1-bit when b/w) / PSD, DPI in the file
 ```
@@ -97,7 +99,7 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `screening/screengeometry.h` | DPI / LPI / dot size maths, `pixelsFor`, `previewDpiFor`, the preview and export pixel caps |
 | `screening/matrixstretch.*` | one ordered-matrix tile per LPI cell, fractional period, optional rotation (angle) |
 | `screening/cellresample.*` | coarse grid for "dot size" (average down in linear light, replicate back) |
-| `screening/separation.*` | CMYK/RGB coverage planes, hand-off to mono ditherers, film cleaning, simulated print |
+| `screening/separation.*` | CMYK/RGB coverage planes, hand-off to mono ditherers, film cleaning, palette split, simulated print |
 | `adjust/tonecurve.*` | 5-point monotone curve (Fritsch-Carlson) for blacks → whites |
 | `adjust/filters.*` | Gaussian blur, guided-filter denoise (multithreaded, float planes) |
 | `export/filmwriter.*` | `toFilmImage` (1-bit when possible), TIFF writer (exact DPI rational, PackBits), PNG, BMP |
@@ -128,7 +130,12 @@ or a short-lived full-resolution cache for export, without duplicating them.
 - **Changing the DPI never changes the size on film.** Picture is resampled; on load DPI = file DPI (neutral).
 - **Neutral settings must reproduce upstream bit for bit** (tests check it). Every new control defaults to 0/off.
 - **Preview/export split**: films > 16 MP preview at reduced DPI, export re-renders at full DPI (cap 250 MP).
-- **Separation lives in the Mono tab** (each ink is a mono film); CMYK uses maximum black generation.
+- **Separation lives in the Color tab** (moved from Mono at the user's request): it starts from the colour
+  picture with the Color tab's adjustments. CMYK/RGB dither each ink in b/w with the *matrix of the selected
+  colour algorithm* (`ditherInkPlane`: same error diffusion or ordered matrix, serpentine, per-ink LPI/angle);
+  CMYK uses maximum black generation. **Palette** mode = the colour dither itself, one film per palette colour
+  (no overlap, like indexed spot colours); pure white is off by default (taken for the paper), no per-ink LPI.
+  Old presets "Mono + separation" open in the Color tab with the colour version of their algorithm.
 - **Lossless only**: never JPEG in the film workflow. BMP was asked back (it is lossless). TIFF written by hand
   for an exact DPI rational and true 1-bit.
 - **No zip, no release on GitHub for now**; test builds are zipped locally (`dist\ditherista` + a LISEZMOI).
@@ -153,6 +160,7 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | 7 PSD | done: spot channels (`feature/psd-export`), inks as layers or both (`feature/psd-layers`) |
 | 8 Per-ink LPI and angle | done (`feature/channel-angles`) |
 | 9 Presets | done (`feature/presets`) |
+| — Separation moved to the Color tab + Palette separation | done (`feature/separation-colour-tab`) |
 | 10 Dot shapes, histogram, curves, technical overlay, UI | to do |
 
 Open report from the user: a crash on a 1500 × 1000 mm film at 300 DPI (209 MP) was **not reproduced** with
