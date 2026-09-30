@@ -61,6 +61,8 @@ SOURCES += \
     export/filmwriter.cpp \
     export/psdwriter.cpp \
     presets/presetstore.cpp \
+    color/colorspace.cpp \
+    palette/palettemodel.cpp \
     mainwindow_presets.cpp \
     treewidget.cpp \
     imagehash/imagehash.cpp \
@@ -118,7 +120,9 @@ HEADERS += \
     adjust/tonecurve.h \
     export/filmwriter.h \
     export/psdwriter.h \
-    presets/presetstore.h
+    presets/presetstore.h \
+    color/colorspace.h \
+    palette/palettemodel.h
 
 FORMS += \
     mainwindow.ui \
