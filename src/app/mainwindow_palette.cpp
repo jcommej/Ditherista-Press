@@ -123,31 +123,20 @@ void MainWindow::resetMonoColorsClickedSlot() {
 
 void MainWindow::savePaletteButtonClickedSlot() {
     /* saves the palette to a Paint.NET file */
-    savePaintNetPalette(true, lastSavedPalette);
+    savePaintNetPalette(currentPaletteEntries());
 }
 
-void MainWindow::savePaintNetPalette(bool fileDialog, QString fileName) {
-    if (fileDialog) {
-        const QString filter = tr("Palettes") + " (" + PALETTE_FILE_FILTERS.join(" ") + ")";\
-        fileName = QFileDialog::getSaveFileName(this, tr("Save Palette"), lastSavedPalette, filter);
-        if (fileName.isEmpty()) { // user cancelled
-            notification->showText(tr("WARNING: palette not saved"), 3000);
-            return;
-        }
+void MainWindow::savePaintNetPalette(const PaletteEntries& palette) {
+    /* asks for a file name and saves `palette` as a Paint.NET palette, locks in a comment (palette/palettemodel.h) */
+    const QString filter = tr("Palettes") + " (" + PALETTE_FILE_FILTERS.join(" ") + ")";
+    const QString fileName = QFileDialog::getSaveFileName(this, tr("Save Palette"), lastSavedPalette, filter);
+    if (fileName.isEmpty()) { // user cancelled
+        notification->showText(tr("WARNING: palette not saved"), 3000);
+        return;
     }
     QFile file(fileName);
     if(file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QTextStream stream(&file);
-        stream<<";paint.net Palette File\n";
-        stream<<";Palette Name: Ditherista palette ("<<customPalette->size<<")\n";
-        stream<<";Colors: "<<customPalette->size<<"\n";
-        for (size_t i = 0; i < customPalette->size; i++) {
-            ByteColor* color = BytePalette_get(customPalette, i);
-            stream<<QString("%1").arg(color->a, 2, 16, QLatin1Char( '0' )).toUpper();
-            stream<<QString("%1").arg(color->r, 2, 16, QLatin1Char( '0' ));
-            stream<<QString("%1").arg(color->g, 2, 16, QLatin1Char( '0' ));
-            stream<<QString("%1").arg(color->b, 2, 16, QLatin1Char( '0' ))<<"\n";
-        }
+        file.write(PaletteModel::toPaintNet(palette, QString("Ditherista palette (%1)").arg(palette.size())).toUtf8());
         file.close();
     } else {
         notification->showText("<font color=#ec6a5e>" + tr("ERROR") + "</font>\n" +
@@ -165,49 +154,30 @@ BytePalette* MainWindow::loadPaintNetPalette(QString fileName, int* errorCode) {
      * Comments starting with ; are supported */
     *errorCode = OK_PALETTE_LOAD;
     QFile file = QFile(fileName);
-    if(!file.open(QIODevice::ReadOnly)) {
+    if(!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qDebug()<<"ERROR: loading Paint .NET palette: "<<file.errorString();
         *errorCode = ERROR_PALETTE_LOAD_IO;
         return nullptr;
     }
-    QTextStream in(&file);
-    QList<ByteColor> palette;
-    while(!in.atEnd()) {
-        QString line = in.readLine().trimmed().toLower();
-        int lineLength = line.length() == 8 ? 4 : (line.length() == 6 ? 3 : -1);
-        if(!line.startsWith(";") && lineLength != -1) {
-            int channel[4];
-            for (int i = 0; i < lineLength; i++) {
-                bool ok;
-                channel[lineLength - 1 - i] = QString("0x%1").arg(line.sliced(2 * i, 2)).toInt(&ok, 16);
-                if (!ok) {
-                    qDebug()<<"ERROR: parsing palette: "<<line;
-                    *errorCode = ERROR_PALETTE_LOAD_PARSE;
-                    return nullptr;
-                }
-            }
-            if (palette.size() > USER_FILE_PALETTE_MAX_COLORS) {
-                qDebug()<<"WARNING: palette has more than 256 colors (palette truncated)";
-                *errorCode = ERROR_PALETTE_LOAD_MAX_COLORS;
-                break;
-            }
-            ByteColor color;
-            color.b = channel[0];
-            color.g = channel[1];
-            color.r = channel[2];
-            color.a = 255; // channel[3]; // TODO - we are currently not supporting transparent palette colors
-            palette.append(color);
-        }
+    // one reader for every palette file: the one the palette editor uses (palette/palettemodel.h)
+    PaletteEntries palette;
+    QString error;
+    bool truncated = false;
+    bool tooFew = false;
+    if (!PaletteModel::fromPaintNet(QString::fromUtf8(file.readAll()), &palette, &error, &truncated, &tooFew)) {
+        qDebug()<<"ERROR: parsing palette: "<<error;
+        *errorCode = tooFew ? ERROR_PALETTE_LOAD_LOW_COLORS : ERROR_PALETTE_LOAD_PARSE;
+        return nullptr;
     }
-    file.close();
-    if (palette.size() < 2) {
-        qDebug()<<"ERROR: palette has less than 2 colors";
-        *errorCode = ERROR_PALETTE_LOAD_LOW_COLORS;
-        return nullptr; // not enough colors
+    if (truncated) {
+        qDebug()<<"WARNING: palette has more than 256 colors (palette truncated)";
+        *errorCode = ERROR_PALETTE_LOAD_MAX_COLORS;
     }
     BytePalette* pal = BytePalette_new(palette.size());
-    for(qsizetype i = 0; i < palette.size(); i ++) {
-        BytePalette_set(pal, (size_t)i, &palette.at(i));
+    for (size_t i = 0; i < palette.size(); i++) {
+        const ByteColor color = {static_cast<uint8_t>(qRed(palette[i].colour)), static_cast<uint8_t>(qGreen(palette[i].colour)),
+                                 static_cast<uint8_t>(qBlue(palette[i].colour)), 255};  // transparency not supported
+        BytePalette_set(pal, i, &color);
     }
     return pal;
 }
@@ -434,50 +404,8 @@ void MainWindow::paletteColorsEditEditingFinishedSlot() {
 }
 
 void MainWindow::updatePaletteColorSwatches(BytePalette* palette) {
-    /* populates the color list with entries and color swatches, based on the given palette */
-    ui->colorListWidget->clear();
-    for (size_t i = 0; i < palette->size; i++) {
-        ui->colorListWidget->addColorEntry((int)i, BytePalette_get(palette, i));
-    }
-    ui->colorListWidget->resizeColumnToContents(0);
-    ui->colorListWidget->resizeColumnToContents(1);
-}
-
-void MainWindow::paletteColorChangedSlot(int index, QColor color) {
-    /* user changed a color in the reduced palette, either by pasting a color or via the color dialog */
-    BytePalette* newPalette = BytePalette_copy(cachedPalette->target_palette);
-    ByteColor bc = { (uint8_t)color.red(), (uint8_t)color.green(), (uint8_t)color.blue(), (uint8_t)color.alpha() };
-    BytePalette_set(newPalette, index, &bc);
-    if (ui->paletteSourceCombo->count() == 3) { // no custom palette exists -> create a new one
-        BytePalette_free(customPalette);
-        customPalette = newPalette;
-        ui->paletteSourceCombo->addItem(QString());
-        ui->paletteSourceCombo->setItemText(3, tr("custom"));
-        ui->paletteSourceCombo->setCurrentIndex(PALETTE_CUSTOM);
-        whileBlocking(ui->paletteSourceWidget)->setCurrentIndex(3);
-    } else if (ui->paletteSourceWidget->currentIndex() != 3) { // create new custom palette (user is not in custom palette mode)
-        bool updatePalette = true;
-        if (customPalette != nullptr) { // another custom palette already exists...
-            QMessageBox::StandardButton reply;
-            reply = QMessageBox::question(this, tr("Custom Palette Exists"),
-                                          tr("Changing the current palette will create a new custom palette.\n"
-                                             "Do you want to save the existing palette?"),
-                                          QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
-            if (reply == QMessageBox::Yes) {
-                savePaintNetPalette(true, lastSavedPalette);
-            } else if (reply == QMessageBox::Cancel) {
-                updatePalette = false; // cancel color edit
-            }
-        }
-        if (updatePalette) {
-            BytePalette_free(customPalette);
-            customPalette = newPalette;
-            ui->paletteSourceCombo->setCurrentIndex(PALETTE_CUSTOM);
-            whileBlocking(ui->paletteSourceWidget)->setCurrentIndex(3);
-        }
-    } else { // user changes another color of the custom palette
-        BytePalette_free(customPalette);
-        customPalette = newPalette;
-        generateCachedPalette(true, false, true);
+    /* shows the palette in the palette editor (see mainwindow_palette_editor.cpp) */
+    if (paletteEditor != nullptr && palette == cachedPalette->target_palette) {
+        paletteEditor->setPalette(currentPaletteEntries());  // with the custom palette's locks
     }
 }

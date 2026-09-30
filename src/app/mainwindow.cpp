@@ -48,6 +48,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     setupSeparationControls();  // CMYK / RGB films, above the Screen panel
     setupToneControls();    // shadows / midtones / highlights / blur / denoise
     setupPresetControls();  // Load / Save / Delete, at the top of the settings
+    setupPaletteEditor();   // editable colour list of the Palette tab, and palette undo
     setupSettingsScroll();  // after every panel exists: they move into one scroll area
     // the two panels above take ~250 px from the ditherer list: open taller than the minimum when the screen allows
     resize(width(), std::min(DEFAULT_WINDOW_HEIGHT, screen()->availableGeometry().height() - 40));

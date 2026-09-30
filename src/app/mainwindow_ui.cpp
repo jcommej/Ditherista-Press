@@ -323,7 +323,6 @@ void MainWindow::connectSignals() {
     connect(ui->spinBoxHue, SIGNAL(valueChanged(double)), this, SLOT(spinBoxHueChangedSlot(double)), Qt::QueuedConnection);
     connect(ui->spinBoxChroma, SIGNAL(valueChanged(double)), this, SLOT(spinBoxChromaChangedSlot(double)), Qt::QueuedConnection);
     connect(ui->srcIlluminantCombo, SIGNAL(currentIndexChanged(int)), this, SLOT(srcIlluminantComboChangedSlot(int)));
-    connect(ui->colorListWidget, SIGNAL(colorChanged(int, QColor)), this, SLOT(paletteColorChangedSlot(int, QColor)));
     connect(ui->resetHueWeightButton, SIGNAL(clicked()), this, SLOT(resetHueWeightButtonClickedSlot()));
     connect(ui->resetChromaWeightButton, SIGNAL(clicked()), this, SLOT(resetChromaWeightButtonClickedSlot()));
     connect(ui->resetValueWeightButton, SIGNAL(clicked()), this, SLOT(resetValueWeightButtonClickedSlot()));

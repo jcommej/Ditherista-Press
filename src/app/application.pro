@@ -61,7 +61,13 @@ SOURCES += \
     export/filmwriter.cpp \
     export/psdwriter.cpp \
     presets/presetstore.cpp \
+    color/colorspace.cpp \
+    palette/palettemodel.cpp \
     mainwindow_presets.cpp \
+    mainwindow_palette_editor.cpp \
+    palette/paletteeditor.cpp \
+    palette/labpanel.cpp \
+    palette/colourpickerdialog.cpp \
     treewidget.cpp \
     imagehash/imagehash.cpp \
     imagehash/imagehashcolor.cpp \
@@ -118,7 +124,12 @@ HEADERS += \
     adjust/tonecurve.h \
     export/filmwriter.h \
     export/psdwriter.h \
-    presets/presetstore.h
+    presets/presetstore.h \
+    color/colorspace.h \
+    palette/palettemodel.h \
+    palette/paletteeditor.h \
+    palette/labpanel.h \
+    palette/colourpickerdialog.h
 
 FORMS += \
     mainwindow.ui \

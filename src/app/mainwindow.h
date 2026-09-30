@@ -17,6 +17,10 @@
 #include "screening/screengeometry.h"
 #include "screening/separation.h"
 #include "presets/presetstore.h"
+#include "palette/palettemodel.h"
+#include "palette/paletteeditor.h"
+#include "palette/colourpickerdialog.h"
+#include <QTimer>
 #include <QJsonObject>
 #include <memory>
 #include <QTreeWidgetItem>
@@ -158,6 +162,33 @@ private:
     [[nodiscard]] const ChannelSettings* renderChannelSettings() const;
     void rebuildChannelRows();
     void updateChannelRowsEnabled();
+    // palette editor (colour list, add / delete / lock / randomize, undo), see mainwindow_palette_editor.cpp
+    PaletteEditor* paletteEditor = nullptr;
+    PaletteHistory paletteHistory;
+    std::vector<bool> customLocks;  // locks of customPalette's colours; ignored if the sizes differ
+    QAction* undoPaletteAction = nullptr;
+    QAction* redoPaletteAction = nullptr;
+    void setupPaletteEditor();
+    [[nodiscard]] PaletteEntries currentPaletteEntries() const;  // the palette the colour ditherers use
+    // one undoable step: records the current palette, runs `beforeApply` (e.g. to realign the separation's
+    // inks), applies; nothing happens if the user cancels replacing an earlier custom palette
+    void editPalette(const PaletteEntries& edited, const std::function<void()>& beforeApply = {});
+    void applyPaletteEntries(const PaletteEntries& entries);  // becomes the custom palette, then re-dither
+    void updatePaletteHistoryActions();
+    void undoPalette(bool redo);  // one step back or forward, from the Edit menu or the colour picker
+    // colour picker session on one palette colour: live low-resolution preview while the colour moves, the full
+    // preview and one undo step once it rests (see mainwindow_palette_editor.cpp)
+    ColourPickerDialog* colourPicker = nullptr;
+    int pickerIndex = -1;          // palette colour being picked; -1 = no session
+    QRgb pickerPending = 0;        // latest colour from the picker
+    QTimer* liveTimer = nullptr;   // coalesces picker changes into live previews
+    QTimer* settleTimer = nullptr; // fires once the colour has rested
+    std::unique_ptr<ImageHashColor> liveSource;  // reduced, adjusted picture for the live preview, kept per session
+    qint64 liveSourceKey = 0;                    // the adjusted preview it was made from (QImage::cacheKey)
+    void pickPaletteColour(int index);
+    void renderLivePalettePreview();
+    void settlePickerColour();
+    void endPickerSession(bool keep);
     // presets, see mainwindow_presets.cpp
     std::unique_ptr<PresetStore> presetStore;
     QGroupBox* presetGroup = nullptr;
@@ -240,7 +271,7 @@ private:
     BatchDitherResult ditherSingleImage(const QString& inFileName, const QString& outFileName);
     // palette and color handling
     BytePalette* loadPaintNetPalette(QString fileName, int* errorCode);
-    void savePaintNetPalette(bool fileDialog, QString fileName);
+    void savePaintNetPalette(const PaletteEntries& palette);  // asks for the file name
     bool loadPalette(QString fileName);
     void updatePaletteColorSwatches(BytePalette* palette);
     void generateCachedPalette(bool dither, bool resetLab, bool updateSwatches);
@@ -339,7 +370,6 @@ private slots:
     void palettePathEditEditingFinishedSlot();
     void paletteColorsEditEditingFinishedSlot();
     void colorReductionComboChangedSlot(int index);
-    void paletteColorChangedSlot(int index, QColor color); // user changed a color in the palette
     void paletteIncludeExtremeColorsSlot(int); // include light/dark, CMY, RGB color
     // palette LAB colors
     void spinBoxValueChangedSlot(double value);
