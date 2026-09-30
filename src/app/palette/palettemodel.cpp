@@ -210,6 +210,27 @@ bool PaletteHistory::redo(PaletteEntries& current) {
     return true;
 }
 
+void PaletteHistory::commitSession() {
+    // keep only the first step of the session: the palette as it was when the picker opened
+    if (undoSteps.size() > floorSize + 1) {
+        undoSteps.erase(undoSteps.begin() + static_cast<std::ptrdiff_t>(floorSize) + 1, undoSteps.end());
+    }
+    redoSteps.clear();
+    floorSize = 0;
+}
+
+bool PaletteHistory::cancelSession(PaletteEntries& current) {
+    bool changed = false;
+    if (undoSteps.size() > floorSize) {
+        current = undoSteps[floorSize];
+        undoSteps.resize(floorSize);
+        changed = true;
+    }
+    redoSteps.clear();
+    floorSize = 0;
+    return changed;
+}
+
 void PaletteHistory::clear() {
     undoSteps.clear();
     redoSteps.clear();

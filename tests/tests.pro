@@ -28,6 +28,8 @@ SOURCES += \
     tst_palette.cpp \
     $$APP/color/colorspace.cpp \
     $$APP/palette/palettemodel.cpp \
+    $$APP/palette/labpanel.cpp \
+    $$APP/palette/colourpickerdialog.cpp \
     $$APP/presets/presetstore.cpp \
     $$APP/export/psdwriter.cpp \
     $$APP/screening/separation.cpp \
@@ -47,4 +49,6 @@ HEADERS += \
     $$APP/viewport/graphicspixmapitem.h \
     $$APP/imagehash/imagehash.h \
     $$APP/imagehash/imagehashmono.h \
-    $$APP/imagehash/imagehashcolor.h
+    $$APP/imagehash/imagehashcolor.h \
+    $$APP/palette/labpanel.h \
+    $$APP/palette/colourpickerdialog.h

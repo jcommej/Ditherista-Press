@@ -34,7 +34,8 @@ public:
     void showSourceColor(const bool show) const;
 
     void setDitherImageMono(const QImage* img, const QString& partialFileName);
-    void setDitherImageColor(const QImage* img, const QString& partialFileName);
+    // displaySize: the size to show it at, when `img` is a reduced render (invalid = its own size)
+    void setDitherImageColor(const QImage* img, const QString& partialFileName, const QSize& displaySize = QSize());
 
     void setSourceImageMono(const QImage* img);
     void setSourceImageColor(const QImage* img);

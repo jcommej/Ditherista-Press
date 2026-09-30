@@ -53,8 +53,10 @@ namespace PaletteModel {
 }
 
 /* Undo / redo for the palette editor: whole-palette snapshots, which are small (256 colours at most). Every
- * change records the palette as it was before; the colour picker records one step per colour tried and undoes
- * no further back than the state it opened on (see floor). */
+ * change records the palette as it was before.
+ * A colour picker session records one step per colour tried, and undoes no further back than the palette it
+ * opened on. When it ends, OK folds its steps into one (Ctrl+Z afterwards goes back to the palette before the
+ * picker), Cancel returns that palette and drops the steps. */
 class PaletteHistory {
 public:
     static constexpr size_t MAX_STEPS = 200;
@@ -63,8 +65,9 @@ public:
     [[nodiscard]] bool canRedo() const { return !redoSteps.empty(); }
     bool undo(PaletteEntries& current);  // current becomes the previous state, and can be redone
     bool redo(PaletteEntries& current);
-    void setFloor() { floorSize = undoSteps.size(); }  // undo stops here, until clearFloor
-    void clearFloor() { floorSize = 0; }
+    void beginSession() { floorSize = undoSteps.size(); }
+    void commitSession();
+    bool cancelSession(PaletteEntries& current);  // false if the palette is already the one the session began on
     void clear();
 private:
     std::vector<PaletteEntries> undoSteps;

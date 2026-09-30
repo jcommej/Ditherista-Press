@@ -14,13 +14,14 @@ QObject* newTestPsd();
 QObject* newTestPresets();
 QObject* newTestColour();
 QObject* newTestPalette();
+QObject* newTestColourPicker();
 
 int main(int argc, char** argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen");  // widget tests run without showing any window
     QApplication app(argc, argv);
     int failed = 0;
     for (QObject* (*make)() : {newTestScreening, newTestAdjust, newTestExport, newTestPreview, newTestSeparation, newTestPsd, newTestPresets,
-                                  newTestColour, newTestPalette}) {
+                                  newTestColour, newTestPalette, newTestColourPicker}) {
         std::unique_ptr<QObject> test(make());
         const QString output = QString("results_%1.txt,txt").arg(test->metaObject()->className());
         const QStringList args = {app.arguments().first(), "-o", output};

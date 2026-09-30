@@ -155,13 +155,19 @@ void GraphicsView::setDitherImageMono(const QImage* img, const QString& partialF
     out_pix_item_mono = item;
 }
 
-void GraphicsView::setDitherImageColor(const QImage* img, const QString& partialFileName) {
+void GraphicsView::setDitherImageColor(const QImage* img, const QString& partialFileName, const QSize& displaySize) {
     if(out_pix_item_color != nullptr) {
         deleteTempFiles();
     }
     GraphicsPixmapItem* item = new GraphicsPixmapItem(QPixmap::fromImage(*img));
     connect(item, SIGNAL(tempFileCreated(QString)), this, SLOT(tempFileCreatedSlot(QString)));
     item->setData(0, partialFileName);
+    if (displaySize.isValid() && displaySize != img->size()) {
+        // a reduced render (live palette preview) stretched over the scene, pixels kept sharp
+        item->setTransformationMode(Qt::FastTransformation);
+        item->setTransform(QTransform::fromScale(static_cast<double>(displaySize.width()) / img->width(),
+                                                 static_cast<double>(displaySize.height()) / img->height()));
+    }
     QGraphicsPixmapItem* previous = out_pix_item_color;
     replaceItem(previous, item);
     out_pix_item_color = item;

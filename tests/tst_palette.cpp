@@ -1,5 +1,8 @@
 #include <QtTest>
+#include <QColorDialog>
 #include "palette/palettemodel.h"
+#include "palette/colourpickerdialog.h"
+#include "palette/labpanel.h"
 #include "color/colorspace.h"
 
 /* Tests for palette/palettemodel.h: limits, locks, randomizing, the colour to add, files and undo. */
@@ -152,26 +155,117 @@ private slots:
         QVERIFY(!history.canRedo());
     }
 
-    void historyFloorLimitsAColourPickerSession() {
+    void pickerSessionUndoesOnlyItsOwnSteps() {
         PaletteHistory history;
         PaletteEntries p = entries({qRgb(0, 0, 0), qRgb(255, 255, 255)});
         history.record(p);  // a change made before the picker opened
         p[0].colour = qRgb(1, 1, 1);
-        history.setFloor();  // picker opens on #010101
         const PaletteEntries opened = p;
+        history.beginSession();  // picker opens on #010101, then tries 44, 55, 66
         for (const int v : {0x44, 0x55, 0x66}) {
             history.record(p);
             p[0].colour = qRgb(v, v, v);
         }
-        int steps = 0;
+        QVERIFY(history.undo(p));
+        QCOMPARE(p[0].colour, qRgb(0x55, 0x55, 0x55));  // Ctrl+Z: the colour tried before
+        int steps = 1;
         while (history.undo(p)) steps++;
         QCOMPARE(steps, 3);  // back to where the picker opened, no further
         QVERIFY(p == opened);
-        history.clearFloor();
-        QVERIFY(history.undo(p));  // closed: the palette history goes on
-        QCOMPARE(p[0].colour, qRgb(0, 0, 0));
+        QVERIFY(history.redo(p));
+        QCOMPARE(p[0].colour, qRgb(0x44, 0x44, 0x44));
+    }
+
+    void pickerOkFoldsTheSessionIntoOneStep() {
+        PaletteHistory history;
+        PaletteEntries p = entries({qRgb(0, 0, 0), qRgb(255, 255, 255)});
+        const PaletteEntries opened = p;
+        history.beginSession();
+        for (const int v : {0x44, 0x55, 0x66}) {
+            history.record(p);
+            p[0].colour = qRgb(v, v, v);
+        }
+        history.commitSession();
+        QVERIFY(history.undo(p));  // one step back: the palette before the picker
+        QVERIFY(p == opened);
+        QVERIFY(!history.undo(p));
+        QVERIFY(history.redo(p));
+        QCOMPARE(p[0].colour, qRgb(0x66, 0x66, 0x66));
+    }
+
+    void pickerCancelPutsBackTheOpeningPalette() {
+        PaletteHistory history;
+        PaletteEntries p = entries({qRgb(0, 0, 0), qRgb(255, 255, 255)});
+        history.record(p);
+        p[1].colour = qRgb(9, 9, 9);  // before the picker: stays undoable
+        const PaletteEntries opened = p;
+        history.beginSession();
+        history.record(p);
+        p[0].colour = qRgb(0x44, 0x44, 0x44);
+        QVERIFY(history.cancelSession(p));
+        QVERIFY(p == opened);
+        QVERIFY(!history.canRedo());
+        QVERIFY(history.undo(p));
+        QCOMPARE(p[1].colour, qRgb(255, 255, 255));
+        // nothing tried: nothing to put back
+        history.beginSession();
+        QVERIFY(!history.cancelSession(p));
+    }
+};
+
+/* The colour picker: its two sides show one colour, whichever side changes it. */
+class TestColourPicker : public QObject {
+    Q_OBJECT
+private slots:
+    void settingAColourMovesBothSides() {
+        ColourPickerDialog dialog;
+        QSignalSpy changed(&dialog, &ColourPickerDialog::colourChanged);
+        dialog.setColour(qRgb(0x3D, 0x3D, 0xDD));
+        QCOMPARE(dialog.colour(), qRgb(0x3D, 0x3D, 0xDD));
+        QCOMPARE(dialog.findChild<QColorDialog*>()->currentColor().rgb(), qRgb(0x3D, 0x3D, 0xDD));
+        const Lab lab = dialog.findChild<LabPanel*>()->lab();
+        const Lab expected = rgbToLab(qRgb(0x3D, 0x3D, 0xDD));
+        QVERIFY(std::abs(lab.L - expected.L) < 1e-9 && std::abs(lab.a - expected.a) < 1e-9 && std::abs(lab.b - expected.b) < 1e-9);
+        QCOMPARE(changed.count(), 0);  // set from outside: not a user change
+    }
+
+    void rgbSideMovesTheLabSide() {
+        ColourPickerDialog dialog;
+        dialog.setColour(qRgb(0, 0, 0));
+        QSignalSpy changed(&dialog, &ColourPickerDialog::colourChanged);
+        dialog.findChild<QColorDialog*>()->setCurrentColor(QColor(255, 0, 0));  // as the user would, on the RGB side
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(changed.at(0).at(0).value<QRgb>(), qRgb(255, 0, 0));
+        const Lab lab = dialog.findChild<LabPanel*>()->lab();
+        QVERIFY(std::abs(lab.L - 53.2408) < 0.01 && std::abs(lab.a - 80.0925) < 0.01 && std::abs(lab.b - 67.2032) < 0.01);
+    }
+
+    void labSideMovesTheRgbSide() {
+        ColourPickerDialog dialog;
+        dialog.setColour(qRgb(0, 0, 0));
+        QSignalSpy changed(&dialog, &ColourPickerDialog::colourChanged);
+        LabPanel* panel = dialog.findChild<LabPanel*>();
+        emit panel->labPicked(Lab{32.2970, 79.1875, -107.8602});  // as a drag on the a*b* plane would
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(dialog.colour(), qRgb(0, 0, 255));
+        QCOMPARE(dialog.findChild<QColorDialog*>()->currentColor().rgb(), qRgb(0, 0, 255));
+        QCOMPARE(hexColour(dialog.colour()), QString("#0000FF"));
+    }
+
+    void labSliceClampsToTheScreenGamut() {
+        // the plane reports any a*b*; the panel keeps the colour inside sRGB, same hue
+        LabPanel panel;
+        panel.setLab({50.0, 0.0, 0.0});
+        QSignalSpy picked(&panel, &LabPanel::labPicked);
+        emit panel.findChild<LabSliceView*>()->abPicked(128.0, 0.0);
+        QCOMPARE(picked.count(), 1);
+        const Lab lab = panel.lab();
+        QVERIFY(inSrgbGamut(lab));
+        QCOMPARE(lab.L, 50.0);
+        QVERIFY(lab.a > 50.0 && std::abs(lab.b) < 1e-9);
     }
 };
 
 QObject* newTestPalette() { return new TestPalette; }
+QObject* newTestColourPicker() { return new TestColourPicker; }
 #include "tst_palette.moc"

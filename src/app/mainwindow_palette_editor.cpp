@@ -1,7 +1,6 @@
 #include "mainwindow.h"
 #include "consts.h"
 #include "color/colorspace.h"
-#include <QColorDialog>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -114,18 +113,8 @@ void MainWindow::setupPaletteEditor() {
     undoPaletteAction->setShortcut(QKeySequence::Undo);
     redoPaletteAction = ui->menuEdit->addAction(tr("Redo Palette Change"));
     redoPaletteAction->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z)});
-    connect(undoPaletteAction, &QAction::triggered, this, [this]() {
-        PaletteEntries palette = currentPaletteEntries();
-        if (!isDithering && paletteHistory.undo(palette)) {
-            applyPaletteEntries(palette);
-        }
-    });
-    connect(redoPaletteAction, &QAction::triggered, this, [this]() {
-        PaletteEntries palette = currentPaletteEntries();
-        if (!isDithering && paletteHistory.redo(palette)) {
-            applyPaletteEntries(palette);
-        }
-    });
+    connect(undoPaletteAction, &QAction::triggered, this, [this]() { undoPalette(false); });
+    connect(redoPaletteAction, &QAction::triggered, this, [this]() { undoPalette(true); });
     updatePaletteHistoryActions();
 }
 
@@ -210,17 +199,192 @@ void MainWindow::updatePaletteHistoryActions() {
     }
 }
 
+void MainWindow::undoPalette(const bool redo) {
+    if (settleTimer != nullptr && settleTimer->isActive()) {  // a picked colour not yet recorded: record it first
+        settleTimer->stop();
+        settlePickerColour();
+    }
+    PaletteEntries palette = currentPaletteEntries();
+    if (isDithering || !(redo ? paletteHistory.redo(palette) : paletteHistory.undo(palette))) {
+        return;
+    }
+    applyPaletteEntries(palette);
+    if (pickerIndex >= 0 && pickerIndex < static_cast<int>(palette.size())) {
+        pickerPending = palette[static_cast<size_t>(pickerIndex)].colour;
+        colourPicker->setColour(pickerPending);  // the picker shows the colour it went back to
+    }
+}
+
+/*************************
+ * COLOUR PICKER SESSION *
+ *************************/
+
+namespace {
+constexpr double LIVE_PREVIEW_PIXELS = 300000.0;  // live preview resolution while a colour moves (~0.1 s a frame)
+constexpr int LIVE_DELAY_MS = 30;                  // coalesces picker events
+constexpr int SETTLE_DELAY_MS = 350;               // the colour has rested: full preview and one undo step
+constexpr int SETTLE_DELAY_LARGE_MS = 900;         // same, for a preview that takes seconds to render in full
+}
+
 void MainWindow::pickPaletteColour(const int index) {
     const PaletteEntries palette = currentPaletteEntries();
     if (index < 0 || index >= static_cast<int>(palette.size())) {
         return;
     }
-    paletteEditor->setEditingRow(index);
-    const QColor result = QColorDialog::getColor(QColor::fromRgb(palette[static_cast<size_t>(index)].colour), this);
-    paletteEditor->setEditingRow(-1);
-    if (result.isValid()) {
-        PaletteEntries edited = currentPaletteEntries();
-        edited[static_cast<size_t>(index)].colour = result.rgb();
-        editPalette(edited);
+    if (colourPicker == nullptr) {
+        colourPicker = new ColourPickerDialog(this);
+        liveTimer = new QTimer(this);
+        liveTimer->setSingleShot(true);
+        liveTimer->setInterval(LIVE_DELAY_MS);
+        settleTimer = new QTimer(this);
+        settleTimer->setSingleShot(true);
+        settleTimer->setInterval(SETTLE_DELAY_MS);
+        connect(liveTimer, &QTimer::timeout, this, &MainWindow::renderLivePalettePreview);
+        connect(settleTimer, &QTimer::timeout, this, &MainWindow::settlePickerColour);
+        connect(colourPicker, &ColourPickerDialog::colourChanged, this, [this](const QRgb colour) {
+            pickerPending = colour;
+            liveTimer->start();
+            settleTimer->start();  // restarted by every change: fires once the colour rests
+        });
+        connect(colourPicker, &ColourPickerDialog::undoRequested, this, [this]() { undoPalette(false); });
+        connect(colourPicker, &ColourPickerDialog::redoRequested, this, [this]() { undoPalette(true); });
+        connect(colourPicker, &QDialog::finished, this, [this](const int result) {
+            endPickerSession(result == QDialog::Accepted);
+        });
     }
+    if (pickerIndex >= 0) {
+        endPickerSession(true);  // another colour clicked while picking: keep the first one's
+    }
+    // palette changes only show on the colour dither: make it the one on screen
+    if (!firstLoad && lastTabIndex != TAB_INDEX_COLOR) {
+        const int tab = ui->tabWidget->currentIndex();
+        ui->tabWidget->setCurrentIndex(TAB_INDEX_COLOR);
+        ui->tabWidget->setCurrentIndex(tab);
+    }
+    pickerIndex = index;
+    pickerPending = palette[static_cast<size_t>(index)].colour;
+    // a large preview takes seconds to render in full: wait longer before it, so a pause in the search does not
+    // block the live preview behind a full render
+    const double pixels = static_cast<double>(previewImage.width()) * previewImage.height();
+    settleTimer->setInterval(pixels > 4.0 * LIVE_PREVIEW_PIXELS ? SETTLE_DELAY_LARGE_MS : SETTLE_DELAY_MS);
+    paletteHistory.beginSession();
+    paletteEditor->setEditingRow(index);
+    colourPicker->setColour(pickerPending);
+    colourPicker->setTitle(tr("Colour %1 of %2").arg(index + 1).arg(palette.size()));
+    colourPicker->show();
+    colourPicker->raise();
+    colourPicker->activateWindow();
+}
+
+void MainWindow::renderLivePalettePreview() {
+    /* the colour dither with the colour being picked, on a reduced copy of the preview: fast enough to follow the
+     * pointer. The full preview comes once the colour rests (settlePickerColour). */
+    if (pickerIndex < 0 || firstLoad || lastTabIndex != TAB_INDEX_COLOR || current_dither_number < COLOR_DITHER_START) {
+        return;
+    }
+    if (isDithering) {
+        liveTimer->start();  // try again when the running dither is done
+        return;
+    }
+    PaletteEntries palette = currentPaletteEntries();
+    if (pickerIndex >= static_cast<int>(palette.size())) {
+        return;
+    }
+    palette[static_cast<size_t>(pickerIndex)].colour = pickerPending;
+    // the palette as the ditherers want it, set up like generateCachedPalette does
+    BytePalette* colours = BytePalette_new(palette.size());
+    for (size_t i = 0; i < palette.size(); i++) {
+        const ByteColor c = {static_cast<uint8_t>(qRed(palette[i].colour)), static_cast<uint8_t>(qGreen(palette[i].colour)),
+                             static_cast<uint8_t>(qBlue(palette[i].colour)), 255};
+        BytePalette_set(colours, i, &c);
+    }
+    CachedPalette* live = CachedPalette_new();
+    CachedPalette_from_BytePalette(live, colours);
+    BytePalette_free(colours);
+    CachedPalette_update_cache(live, colorComparisonMode, &srcIlluminant);
+    CachedPalette_set_shift(live, DEFAULT_BIT_SHIFT.r, DEFAULT_BIT_SHIFT.g, DEFAULT_BIT_SHIFT.b);
+    live->lab_weights = cachedPalette->lab_weights;
+
+    // the reduced, adjusted picture: made once per session, as long as the picture and its adjustments stay
+    const qint64 key = imageHashColor.getSourceQImage()->cacheKey();
+    const double scale = std::min(1.0, std::sqrt(LIVE_PREVIEW_PIXELS / (static_cast<double>(previewImage.width()) * previewImage.height())));
+    if (liveSource == nullptr || liveSourceKey != key) {
+        const QSize size(std::max(1, static_cast<int>(previewImage.width() * scale)), std::max(1, static_cast<int>(previewImage.height() * scale)));
+        const QImage small = scale < 1.0 ? previewImage.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation) : previewImage;
+        liveSource = std::make_unique<ImageHashColor>();
+        liveSource->copyAdjustmentsFrom(imageHashColor);
+        liveSource->pixelsPerMm = renderDpi * small.width() / previewImage.width() / MM_PER_INCH;
+        liveSource->denoiseScale = static_cast<double>(small.width()) / nativeImage.width();
+        liveSource->setSourceImage(&small, true);
+        liveSourceKey = key;
+    }
+    const QImage* small = liveSource->getSourceQImage();
+    const double previewDpi = renderDpi;
+    renderDpi = previewDpi * small->width() / previewImage.width();  // LPI cell and dot size keep their size on paper
+    CachedPalette* kept = cachedPalette;
+    cachedPalette = live;
+    ditherColorInto(*liveSource);
+    cachedPalette = kept;
+    renderDpi = previewDpi;
+    CachedPalette_free(live);
+    if (pickerIndex < 0 || liveSource == nullptr || !liveSource->hasDitheredImage(current_dither_number)) {
+        return;  // the session ended while this rendered
+    }
+    // shown stretched over the scene by the view: no full-size copy to make
+    ui->graphicsView->setDitherImageColor(liveSource->getDitheredImage(current_dither_number),
+                                          ui->treeWidgetColor->getCurrentDitherFileName(), previewImage.size());
+    ui->graphicsView->showSourceColor(false);
+}
+
+void MainWindow::settlePickerColour() {
+    /* the picked colour has rested: it goes into the palette - one undo step - and the preview is rendered in full */
+    if (pickerIndex < 0) {
+        return;
+    }
+    if (isDithering) {
+        settleTimer->start();
+        return;
+    }
+    PaletteEntries palette = currentPaletteEntries();
+    if (pickerIndex >= static_cast<int>(palette.size())) {
+        colourPicker->reject();  // the colour is gone (e.g. undo of the Add that made it)
+        return;
+    }
+    if (palette[static_cast<size_t>(pickerIndex)].colour == pickerPending) {
+        if (!firstLoad) reDither(false);  // back where it was: replace the live preview by the full one
+        return;
+    }
+    palette[static_cast<size_t>(pickerIndex)].colour = pickerPending;
+    editPalette(palette);
+}
+
+void MainWindow::endPickerSession(const bool keep) {
+    if (pickerIndex < 0) {
+        return;
+    }
+    if (isDithering) {
+        // closed while a preview renders (with a stand-in palette): finish once it is done
+        QTimer::singleShot(50, this, [this, keep]() { endPickerSession(keep); });
+        return;
+    }
+    liveTimer->stop();
+    if (keep) {
+        if (settleTimer->isActive()) {
+            settleTimer->stop();
+            settlePickerColour();
+        }
+        paletteHistory.commitSession();  // the colours tried become one step
+    } else {
+        settleTimer->stop();
+        PaletteEntries palette = currentPaletteEntries();
+        if (paletteHistory.cancelSession(palette)) {
+            applyPaletteEntries(palette);  // the palette the picker opened on
+        } else if (!firstLoad) {
+            reDither(false);  // a live preview may still be on screen
+        }
+    }
+    pickerIndex = -1;
+    liveSource.reset();  // the reduced picture is only kept while picking
+    paletteEditor->setEditingRow(-1);
+    updatePaletteHistoryActions();
 }

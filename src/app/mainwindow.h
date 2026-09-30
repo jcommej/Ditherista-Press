@@ -19,6 +19,8 @@
 #include "presets/presetstore.h"
 #include "palette/palettemodel.h"
 #include "palette/paletteeditor.h"
+#include "palette/colourpickerdialog.h"
+#include <QTimer>
 #include <QJsonObject>
 #include <memory>
 #include <QTreeWidgetItem>
@@ -173,7 +175,20 @@ private:
     void editPalette(const PaletteEntries& edited, const std::function<void()>& beforeApply = {});
     void applyPaletteEntries(const PaletteEntries& entries);  // becomes the custom palette, then re-dither
     void updatePaletteHistoryActions();
+    void undoPalette(bool redo);  // one step back or forward, from the Edit menu or the colour picker
+    // colour picker session on one palette colour: live low-resolution preview while the colour moves, the full
+    // preview and one undo step once it rests (see mainwindow_palette_editor.cpp)
+    ColourPickerDialog* colourPicker = nullptr;
+    int pickerIndex = -1;          // palette colour being picked; -1 = no session
+    QRgb pickerPending = 0;        // latest colour from the picker
+    QTimer* liveTimer = nullptr;   // coalesces picker changes into live previews
+    QTimer* settleTimer = nullptr; // fires once the colour has rested
+    std::unique_ptr<ImageHashColor> liveSource;  // reduced, adjusted picture for the live preview, kept per session
+    qint64 liveSourceKey = 0;                    // the adjusted preview it was made from (QImage::cacheKey)
     void pickPaletteColour(int index);
+    void renderLivePalettePreview();
+    void settlePickerColour();
+    void endPickerSession(bool keep);
     // presets, see mainwindow_presets.cpp
     std::unique_ptr<PresetStore> presetStore;
     QGroupBox* presetGroup = nullptr;

@@ -66,6 +66,8 @@ SOURCES += \
     mainwindow_presets.cpp \
     mainwindow_palette_editor.cpp \
     palette/paletteeditor.cpp \
+    palette/labpanel.cpp \
+    palette/colourpickerdialog.cpp \
     treewidget.cpp \
     imagehash/imagehash.cpp \
     imagehash/imagehashcolor.cpp \
@@ -125,7 +127,9 @@ HEADERS += \
     presets/presetstore.h \
     color/colorspace.h \
     palette/palettemodel.h \
-    palette/paletteeditor.h
+    palette/paletteeditor.h \
+    palette/labpanel.h \
+    palette/colourpickerdialog.h
 
 FORMS += \
     mainwindow.ui \

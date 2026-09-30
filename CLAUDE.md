@@ -105,6 +105,10 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `export/filmwriter.*` | `toFilmImage` (1-bit when possible), TIFF writer (exact DPI rational, PackBits), PNG, BMP |
 | `export/psdwriter.*` | PSD: composite, inks as layers (Multiply over Paper / Screen over Garment) and/or spot channels, RLE, resolution |
 | `presets/presetstore.*` | JSON preset files in `%APPDATA%/ditherista/presets` |
+| `color/colorspace.*` | exact sRGB ↔ CIELAB (D65, CIE ε/κ), gamut test and chroma clamp, HEX parse/format |
+| `palette/palettemodel.*` | palette entries + locks, 2..256 limits, seeded randomize, "least represented" colour, Paint.NET I/O (locks in a `;Locked:` comment; the one reader for every palette file), `PaletteHistory` (undo/redo, picker sessions) |
+| `palette/paletteeditor.*` | Palette tab colour list: [swatch][#HEX][lock][delete][🔀] rows, Add / Randomize / Save / Load |
+| `palette/labpanel.*`, `palette/colourpickerdialog.*` | colour picker: Qt's QColorDialog embedded + LAB panel (3D gamut cloud, a*b* slice, L* slider), one colour, live |
 
 ### MainWindow additions
 
@@ -114,6 +118,7 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `mainwindow_tone.cpp` | the 7 extra rows of Input Image Settings (mono page, then colour page) |
 | `mainwindow_separation.cpp` | Color Separation panel, per-ink table, rendering/saving films; the settings scroll area |
 | `mainwindow_presets.cpp` | Presets bar, `capturePreset` / `applyPreset` |
+| `mainwindow_palette_editor.cpp` | palette editing (`editPalette` = one undo step → custom palette), Edit > Undo/Redo Palette Change, colour picker session with live low-res preview |
 | `mainwindow.cpp` | `ditherMonoInto` / `ditherColorInto` (dither any cache: preview or film), `renderFilm`, `saveFile` |
 | `viewport/graphicsview.cpp` | hold click / Space to show the original, scene item replacement without leaks |
 
@@ -139,6 +144,16 @@ or a short-lived full-resolution cache for export, without duplicating them.
 - **Lossless only**: never JPEG in the film workflow. BMP was asked back (it is lossless). TIFF written by hand
   for an exact DPI rational and true 1-bit.
 - **No zip, no release on GitHub for now**; test builds are zipped locally (`dist\ditherista` + a LISEZMOI).
+- **Palette editor** (decided with the user): any edit turns the palette into the *custom* one (upstream
+  behaviour, including the "save the existing custom palette?" question). A lock blocks delete **and** randomize
+  (buttons greyed), not editing. Add Color = the picture colour the palette renders worst. Randomize = LAB
+  variation of unlocked colours, new seed per click. Files stay **Paint.NET** (not JSON). **One history** for the
+  palette (Edit menu, Ctrl+Z / Ctrl+Y); the picker's Ctrl+Z walks the colours tried in its session (a step when the
+  colour rests), OK folds them into one step, Cancel restores. Live preview: palette dithered on a ≤0.3 MP copy
+  cached per session, stretched by the view; full render once the colour rests (0.35 s, 0.9 s on large previews).
+  Measured on 16 MP: ~0.1-0.2 s per live frame, 3.6 s full.
+- LAB panel: follows the user's HTML mock-up, except L* is the vertical axis of the 3D view (matches the L*
+  slider). Out-of-gamut picks are clamped to the sRGB edge (same L*, same hue).
 - Known open question: matrix smoothing for round dots / more grey levels at high DPI was proposed and
   postponed by the user ("je valide pour le moment").
 
