@@ -33,6 +33,8 @@
         <file>resources/trash_disabled.svg</file>
         <file>resources/shuffle.svg</file>
         <file>resources/shuffle_disabled.svg</file>
+        <file>resources/file.svg</file>
+        <file>resources/folder.svg</file>
         <file>application_en_US.qm</file>
         <file>resources/palettes/p_c64.pal</file>
         <file>resources/palettes/p_cga0.pal</file>

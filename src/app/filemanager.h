@@ -9,12 +9,15 @@ class FileManager final : public QObject {
 public:
     /* methods */
     FileManager();
-    bool getOpenFileName(QString* fileName);
+    // defaultFolder (Preferences): where the dialog starts when set; otherwise the folder used last
+    bool getOpenFileName(QString* fileName, const QString& defaultFolder = QString());
     void setDirectory(const QString &directory);
     [[nodiscard]] bool isDefaultDirectory() const;
     void clearCurrentFileName();
-    QString fileSave(bool saveAs, QString suggestedFileName);
+    // suggestedFileName: a name with its extension (see currentExtension), or without, which gets one
+    QString fileSave(bool saveAs, QString suggestedFileName, const QString& defaultFolder = QString());
     [[nodiscard]] QString currentSaveFilter() const { return currentFilter; }  // film format chosen in the dialog
+    [[nodiscard]] QString currentExtension() const;  // of that format, without the dot: png until one is chosen
     // save formats: lossless only, never JPEG (see export/filmwriter.h)
     static QString pngFilter();
     static QString tiffFilter();

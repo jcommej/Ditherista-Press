@@ -108,6 +108,8 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `color/colorspace.*` | exact sRGB ↔ CIELAB (D65, CIE ε/κ), gamut test and chroma clamp, HEX parse/format |
 | `palette/palettemodel.*` | palette entries + locks, 2..256 limits, seeded randomize, "least represented" colour, Paint.NET I/O (locks in a `;Locked:` comment; the one reader for every palette file), `PaletteHistory` (undo/redo, picker sessions) |
 | `palette/paletteeditor.*` | Palette tab colour list: [swatch][#HEX][lock][delete][🔀] rows, Add / Randomize / Save / Load |
+| `preferences/preferences.*` | Preferences (navigation flags, screen PPI, file-name template, default folders) in `%APPDATA%/ditherista/preferences.ini`; `fileNameFromTemplate` |
+| `preferences/preferencesdialogs.*` | Files and Folders dialog (Filename Settings + Default Folders, styled after the user's mock-ups), screen calibration dialog, `ToggleSwitch` |
 | `palette/labpanel.*`, `palette/colourpickerdialog.*` | colour picker: Qt's QColorDialog embedded + LAB panel (3D gamut cloud, a*b* slice, L* slider), one colour, live |
 
 ### MainWindow additions
@@ -118,6 +120,7 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `mainwindow_tone.cpp` | the 7 extra rows of Input Image Settings (mono page, then colour page) |
 | `mainwindow_separation.cpp` | Color Separation panel, per-ink table, rendering/saving films; the settings scroll area |
 | `mainwindow_presets.cpp` | Presets bar, `capturePreset` / `applyPreset` |
+| `mainwindow_preferences.cpp` | Preferences menu (between Edit and Help), 1:1 and Fit buttons in the status bar, suggested save name |
 | `mainwindow_palette_editor.cpp` | palette editing (`editPalette` = one undo step → custom palette), Edit > Undo/Redo Palette Change, colour picker session with live low-res preview |
 | `mainwindow.cpp` | `ditherMonoInto` / `ditherColorInto` (dither any cache: preview or film), `renderFilm`, `saveFile` |
 | `viewport/graphicsview.cpp` | hold click / Space to show the original, scene item replacement without leaks |
@@ -154,6 +157,14 @@ or a short-lived full-resolution cache for export, without duplicating them.
   Measured on 16 MP: ~0.1-0.2 s per live frame, 3.6 s full.
 - LAB panel: follows the user's HTML mock-up, except L* is the vertical axis of the 3D view (matches the L*
   slider). Out-of-gamut picks are clamped to the sRGB edge (same L*, same hue).
+- **Preview mouse roles (the user insists): left hold = original, left drag = export the file, double-click = 100 %,
+  Space = original.** Navigation from plotterfun (`D:\Documents\plotterfun\plotterfun\ui.js`), each switchable in
+  Preferences: smooth wheel zoom around the pointer (wheel up = in; off = upstream steps, wheel up = out),
+  **right-drag pan**, middle-button joystick (hold, Esc stops), inertia, pinch. 1:1 = `screenPpi / renderDpi`
+  (the scene is at the preview DPI), screen PPI from Calibrate Screen or the system's. Zoom 2 %..1600 %.
+- Save name = Filename Settings template (default `{name}{suffix}.{ext}`, suffix `_{dither}`); upstream proposed
+  the algorithm name only.
+- Postponed by the user: dot shapes (maybe with other algorithms), histogram, dot cut-off / high-cut overlay.
 - Known open question: matrix smoothing for round dots / more grey levels at high DPI was proposed and
   postponed by the user ("je valide pour le moment").
 
@@ -176,7 +187,7 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | 8 Per-ink LPI and angle | done (`feature/channel-angles`) |
 | 9 Presets | done (`feature/presets`) |
 | — Separation moved to the Color tab + Palette separation | done (`feature/separation-colour-tab`) |
-| 10 Dot shapes, histogram, curves, technical overlay, UI | to do |
+| 10 UI: navigation + Preferences (files, folders, calibration) | done (`feature/navigation-preferences`); dot shapes, histogram, cut-off overlay postponed |
 
 Open report from the user: a crash on a 1500 × 1000 mm film at 300 DPI (209 MP) was **not reproduced** with
 Bayer 8×8 + LPI; the scene-item leaks fixed in phase 4 are a likely contributor. Ask for the algorithm and step

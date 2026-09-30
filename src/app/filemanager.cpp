@@ -16,10 +16,11 @@ void FileManager::setDirectory(const QString& directory) {
     fileIoLocation = directory;
 }
 
-bool FileManager::getOpenFileName(QString* fileName) {
+bool FileManager::getOpenFileName(QString* fileName, const QString& defaultFolder) {
     const QString filter = tr("Images") + " (" + FILE_FILTERS.join(" ") + ")";
+    const QString start = !defaultFolder.isEmpty() && QDir(defaultFolder).exists() ? defaultFolder : fileIoLocation;
     *fileName = QFileDialog::getOpenFileName((QWidget*)parent(),
-                                                    tr("Open Image File"), fileIoLocation,
+                                                    tr("Open Image File"), start,
                                                     filter);
     if(fileName->isEmpty() || fileName->isNull() || !QFile::exists(*fileName)) {
         return false; // cancelled or file does not exist
@@ -29,7 +30,12 @@ bool FileManager::getOpenFileName(QString* fileName) {
     return(true);
 }
 
-QString FileManager::fileSave(const bool saveAs, QString suggestedFileName) {
+QString FileManager::currentExtension() const {
+    return currentFilter == pngFilter() || currentFilter.isEmpty() ? "png"
+           : currentFilter == bmpFilter() ? "bmp" : currentFilter == psdFilter() ? "psd" : "tif";
+}
+
+QString FileManager::fileSave(const bool saveAs, QString suggestedFileName, const QString& defaultFolder) {
     /* Displays a file "Save-as" dialog when user chooses "Save As" and returns the file-name.
      * Displays a file "Save-as" dialog when the user chooses "Save" for the first time, then returns
      * the file name.
@@ -38,9 +44,12 @@ QString FileManager::fileSave(const bool saveAs, QString suggestedFileName) {
         return currentFileName;
     }
     if (currentFileName.isEmpty()) {
-        suggestedFileName += currentFilter == pngFilter() || currentFilter.isEmpty() ? ".png"
-                           : currentFilter == bmpFilter() ? ".bmp" : currentFilter == psdFilter() ? ".psd" : ".tif";
-        suggestedFileName = fileIoLocation + QDir::separator() + suggestedFileName;
+        static const QStringList extensions{"png", "tif", "tiff", "bmp", "psd"};
+        if (!extensions.contains(QFileInfo(suggestedFileName).suffix().toLower())) {
+            suggestedFileName += "." + currentExtension();
+        }
+        const QString folder = !defaultFolder.isEmpty() && QDir(defaultFolder).exists() ? defaultFolder : fileIoLocation;
+        suggestedFileName = folder + QDir::separator() + suggestedFileName;
     } else {
         suggestedFileName = currentFileName;
     }

@@ -26,6 +26,8 @@ SOURCES += \
     tst_presets.cpp \
     tst_colour.cpp \
     tst_palette.cpp \
+    tst_preferences.cpp \
+    $$APP/preferences/preferences.cpp \
     $$APP/color/colorspace.cpp \
     $$APP/palette/palettemodel.cpp \
     $$APP/palette/labpanel.cpp \

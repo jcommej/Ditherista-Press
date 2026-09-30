@@ -77,6 +77,7 @@ void MainWindow::setupSeparationControls() {
     // just above the Screen panel, which sits right above the Input Image Settings
     const int index = ui->verticalLayout->indexOf(ui->imageSettingsStackedWidget) - 1;
     ui->verticalLayout->insertWidget(index, separationGroup, 0);
+    separationGroup->setVisible(lastTabIndex == TAB_INDEX_COLOR);  // Color tab only; the app opens on Mono
 
     connect(separationModeCombo, &QComboBox::currentIndexChanged, this, &MainWindow::separationModeChangedSlot);
     connect(separationViewCombo, &QComboBox::currentIndexChanged, this, &MainWindow::separationViewChangedSlot);

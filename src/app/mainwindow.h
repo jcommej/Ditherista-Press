@@ -20,6 +20,8 @@
 #include "palette/palettemodel.h"
 #include "palette/paletteeditor.h"
 #include "palette/colourpickerdialog.h"
+#include "preferences/preferences.h"
+#include "preferences/preferencesdialogs.h"
 #include <QTimer>
 #include <QJsonObject>
 #include <memory>
@@ -189,6 +191,17 @@ private:
     void renderLivePalettePreview();
     void settlePickerColour();
     void endPickerSession(bool keep);
+    // Preferences menu: navigation, screen calibration, file names, default folders; mainwindow_preferences.cpp
+    Preferences preferences;
+    QString sourceFileName;       // picture file name without extension, for {name}; empty for a pasted picture
+    FilesDialog* filesDialog = nullptr;
+    void setupPreferences();
+    void savePreferences();
+    void applyNavigation();
+    [[nodiscard]] double screenPpi() const;  // calibrated, or what the system reports
+    void zoomToRealSize();                   // 1:1: the film at its size on paper
+    void showFilesDialog(FilesDialog::Section section);
+    [[nodiscard]] QString suggestedFileName() const;  // from the Filename Settings
     // presets, see mainwindow_presets.cpp
     std::unique_ptr<PresetStore> presetStore;
     QGroupBox* presetGroup = nullptr;

@@ -22,7 +22,7 @@ void MainWindow::runDitherThread() {
 void MainWindow::fileOpenSlot() {
     /* shows a file open dialog and loads an image file from disk */
     QString fileName;
-    if(fileManager.getOpenFileName(&fileName)) {
+    if(fileManager.getOpenFileName(&fileName, preferences.openFolder)) {
         loadImageFromFileSlot(fileName);
     }
 }
@@ -38,10 +38,9 @@ void MainWindow::fileSaveSlot() {
 }
 
 void MainWindow::fileSaveSlotImpl(const bool saveAs) {
-    QString fileName;
-    fileName = activeTreeWidget->getCurrentDitherFileName();
+    QString fileName = suggestedFileName();  // Preferences > Filename Settings
     if(!fileName.isEmpty()) {
-        fileName = fileManager.fileSave(saveAs, fileName);
+        fileName = fileManager.fileSave(saveAs, fileName, preferences.saveFolder);
         if (!fileName.isEmpty()) {
             saveFile(fileName);
         }
@@ -77,6 +76,7 @@ void MainWindow::pasteSlot() {
         } else { // pasted content is a supported image
             const QImage image = clipboard->image(QClipboard::Clipboard);
             if (!image.isNull()) {
+                sourceFileName.clear();  // a pasted picture has no file name: {name} becomes "image"
                 loadImage(&image);
             }
         }

@@ -5,7 +5,9 @@
 #include "graphicspixmapitem.h"
 #include <QGraphicsView>
 #include <QDragEnterEvent>
+#include <QElapsedTimer>
 #include <QLabel>
+#include <QTimer>
 
 class GraphicsView final : public QGraphicsView {
     Q_OBJECT
@@ -44,10 +46,52 @@ public:
 
     void setZoomLevel(int level, bool update);
 
+    /* Navigation (Preferences menu). Each can be turned off, giving back upstream's behaviour:
+     * - smoothZoom: the wheel zooms continuously around the point under the pointer (upstream: steps of 10 %
+     *   around the centre, wheel up zooming out)
+     * - rightDragPan: drag with the right button to move the picture - the left button keeps its roles, hold to
+     *   show the original and drag to export
+     * - middleJoystick: click the middle button and move away from that point: the view glides that way, faster
+     *   the further the pointer is; release (or Esc) to stop
+     * - inertia: after a pan or a joystick glide the view carries on and slows down
+     * - pinchZoom: pinch on a touch screen or a touchpad */
+    struct Navigation {
+        bool smoothZoom = true;
+        bool rightDragPan = true;
+        bool middleJoystick = true;
+        bool inertia = true;
+        bool pinchZoom = true;
+    };
+    void setNavigation(const Navigation& settings) { navigation = settings; }
+    // zoom factor (1 = 100 %), limited to MIN_ZOOM..MAX_ZOOM percent; `anchor`, a point of the viewport, stays
+    // over the same point of the picture
+    void setZoomFactor(double factor, bool update, const QPointF* anchor = nullptr);
+    [[nodiscard]] double zoomFactor() const { return zoom; }
+    void zoomToFit();  // the whole picture in the view
+
     ~GraphicsView() override;
+protected:
+    bool viewportEvent(QEvent* event) override;  // pinch gestures
 private:
     /* attributes */
-    int zoomLevel = 100; // in percent
+    int zoomLevel = 100; // in percent, rounded from zoom
+    double zoom = 1.0;
+    Navigation navigation;
+    // right-drag pan, middle-button joystick, inertia: the view moves by scrolling
+    enum class Motion { None, Joystick, Inertia };
+    bool panning = false;
+    QPointF panLast;
+    QPointF velocity;           // scroll speed in viewport pixels per second
+    QElapsedTimer moveClock;    // time since the last pan move
+    Motion motion = Motion::None;
+    QPointF joystickOrigin;
+    QPointF joystickPointer;
+    QTimer motionTimer;         // one frame of joystick or inertia motion
+    QElapsedTimer frameClock;
+    QPointF scrollRemainder;    // sub-pixel scrolling carried over to the next frame
+    void scrollBy(const QPointF& delta);
+    void motionFrame();
+    void stopMotion();
     QGraphicsScene scene;
     GraphicsPixmapItem* out_pix_item_mono = nullptr;   // dithered mono image
     GraphicsPixmapItem* out_pix_item_color = nullptr;  // dithered color image

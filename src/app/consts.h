@@ -74,8 +74,8 @@ inline static QStringList FILE_FILTERS = {"*.jpg", "*.jpeg", "*.png", "*.bmp"};
 inline static QStringList PALETTE_FILTERS = {"*.pal", "*.txt"};
 
 // viewport/GraphicsView zoom
-inline constexpr int MIN_ZOOM = 10;
-inline constexpr int MAX_ZOOM = 500;
+inline constexpr int MIN_ZOOM = 2;     // a large film shown whole, or at its size on paper (1:1)
+inline constexpr int MAX_ZOOM = 1600;  // close enough to judge single dots
 inline constexpr int ZOOM_STEP_KEYBOARD = 10;
 inline constexpr int ZOOM_STEP_WHEEL = 10;
 
