@@ -9,6 +9,7 @@
 #include <QGestureEvent>
 #include <QPinchGesture>
 #include <QNativeGestureEvent>
+#include <QPainter>
 #include <QScrollBar>
 #include <algorithm>
 #include <cmath>
@@ -35,6 +36,7 @@ GraphicsView::GraphicsView(QWidget* parent) : QGraphicsView(parent) {
     viewport()->grabGesture(Qt::PinchGesture);
     motionTimer.setInterval(16);  // about 60 frames a second
     connect(&motionTimer, &QTimer::timeout, this, &GraphicsView::motionFrame);
+    restCursor();
 }
 
 /*******************************************
@@ -48,7 +50,52 @@ constexpr double JOYSTICK_POWER = 1.35;
 constexpr double JOYSTICK_MAX_SPEED = 6000.0;
 constexpr double INERTIA_TAU = 0.3;         // seconds for the speed to fall to 37 %
 constexpr double INERTIA_MIN_SPEED = 40.0;  // below this the motion stops
-constexpr double WHEEL_ZOOM_PER_NOTCH = 1.2;
+constexpr double GRID_MIN_SPACING = 4.0;    // screen pixels: closer grid lines are not drawn
+}
+
+void GraphicsView::setBackground(const Background mode, const int grey) {
+    background = mode;
+    const int level = 255 - std::clamp(grey, 0, 255);  // 0 = white on the slider
+    setBackgroundBrush(mode == Background::Solid ? QColor(level, level, level)
+                       : mode == Background::GraphPaperWhite ? QColor(Qt::white) : QColor(0x10, 0x10, 0x10));
+    viewport()->update();
+}
+
+void GraphicsView::setPixelsPerMm(const double value) {
+    pixelsPerMm = value;
+    viewport()->update();
+}
+
+void GraphicsView::drawBackground(QPainter* painter, const QRectF& rect) {
+    QGraphicsView::drawBackground(painter, rect);  // the background brush
+    if (background == Background::Solid || pixelsPerMm <= 0.0) {
+        return;
+    }
+    const bool white = background == Background::GraphPaperWhite;
+    const QColor thin = white ? QColor(0xd6, 0xde, 0xe6) : QColor(0x2a, 0x2e, 0x34);
+    const QColor thick = white ? QColor(0x9c, 0xab, 0xbb) : QColor(0x50, 0x58, 0x62);
+    const double onScreen = pixelsPerMm * zoom;  // one millimetre on screen
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, false);
+    // lines in scene units (preview pixels) from the picture's top-left corner; cosmetic pens stay 1 px wide
+    const auto draw = [&](const double step, const QColor& colour, const int width) {
+        QPen pen(colour, width);
+        pen.setCosmetic(true);
+        painter->setPen(pen);
+        for (double x = std::floor(rect.left() / step) * step; x <= rect.right(); x += step) {
+            painter->drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()));
+        }
+        for (double y = std::floor(rect.top() / step) * step; y <= rect.bottom(); y += step) {
+            painter->drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y));
+        }
+    };
+    if (onScreen >= GRID_MIN_SPACING) {
+        draw(pixelsPerMm, thin, 1);
+    }
+    if (onScreen * 10.0 >= GRID_MIN_SPACING) {
+        draw(pixelsPerMm * 10.0, thick, 2);
+    }
+    painter->restore();
 }
 
 void GraphicsView::setZoomFactor(double factor, const bool update, const QPointF* anchor) {
@@ -87,7 +134,7 @@ void GraphicsView::stopMotion() {
     motion = Motion::None;
     motionTimer.stop();
     velocity = QPointF();
-    viewport()->unsetCursor();
+    restCursor();
 }
 
 void GraphicsView::motionFrame() {
@@ -180,9 +227,14 @@ void GraphicsView::showOriginal(const bool show) {
 }
 
 void GraphicsView::mousePressEvent(QMouseEvent* event) {
-    if (event->button() == Qt::RightButton && navigation.rightDragPan) {
+    // drag to pan: the left or the right button; Ctrl + left still drags the film out as a file
+    const bool panButton = event->button() == Qt::RightButton ||
+                           (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ControlModifier));
+    if (navigation.dragPan && panButton) {
         stopMotion();
+        setFocus();  // so that Space works right after
         panning = true;
+        panningButton = event->button();
         panLast = event->position();
         velocity = QPointF();
         moveClock.start();
@@ -205,9 +257,11 @@ void GraphicsView::mousePressEvent(QMouseEvent* event) {
         stopMotion();
         setFocus();  // so that Space works right after
         pressPos = event->pos();
-        showOriginal(true);
+        if (!navigation.dragPan) {
+            showOriginal(true);  // upstream: hold the left button to see the original (Space does it in any case)
+        }
     }
-    QGraphicsView::mousePressEvent(event);
+    QGraphicsView::mousePressEvent(event);  // a drag of the film out of the window starts here
 }
 
 void GraphicsView::mouseMoveEvent(QMouseEvent* event) {
@@ -236,9 +290,9 @@ void GraphicsView::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void GraphicsView::mouseReleaseEvent(QMouseEvent* event) {
-    if (event->button() == Qt::RightButton && panning) {
+    if (panning && event->button() == panningButton) {
         panning = false;
-        viewport()->unsetCursor();
+        restCursor();
         // a flick carries on; a pan that stopped before the release does not
         if (navigation.inertia && moveClock.elapsed() < 80 && std::hypot(velocity.x(), velocity.y()) > INERTIA_MIN_SPEED) {
             motion = Motion::Inertia;
@@ -253,7 +307,7 @@ void GraphicsView::mouseReleaseEvent(QMouseEvent* event) {
     if (event->button() == Qt::MiddleButton && motion == Motion::Joystick) {
         if (navigation.inertia && std::hypot(velocity.x(), velocity.y()) > INERTIA_MIN_SPEED) {
             motion = Motion::Inertia;  // the timer keeps running: the glide slows down
-            viewport()->unsetCursor();
+            restCursor();
         } else {
             stopMotion();
         }
@@ -430,16 +484,16 @@ void GraphicsView::wheelEvent(QWheelEvent* event) {
         const double notches = event->angleDelta().y() / 120.0;
         if (notches != 0.0) {
             const QPointF at = event->position();
-            setZoomFactor(zoom * std::pow(WHEEL_ZOOM_PER_NOTCH, notches), true, &at);
+            setZoomFactor(zoom * std::pow(1.0 + navigation.zoomIncrement / 100.0, notches), true, &at);
         }
         event->accept();
         return;
     }
     if (event->angleDelta().y() > 0 && zoomLevel > MIN_ZOOM) {
-        zoomLevel -= ZOOM_STEP_WHEEL;
+        zoomLevel -= navigation.zoomIncrement;
         setZoomLevel(zoomLevel, true);
     } else if (event->angleDelta().y() < 0 && zoomLevel < MAX_ZOOM) {
-        zoomLevel += ZOOM_STEP_WHEEL;
+        zoomLevel += navigation.zoomIncrement;
         setZoomLevel(zoomLevel, true);
     }
     event->accept();

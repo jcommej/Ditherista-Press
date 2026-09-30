@@ -391,7 +391,8 @@ void MainWindow::saveFile(const QString &fileName) {
         }
         return;
     }
-    const QImage film = toFilmImage(renderFilm());  // 1-bit when the result is pure black and white
+    // 1-bit when the result is pure black and white; a colour film carries the working profile
+    const QImage film = withProfile(toFilmImage(renderFilm()));
     QString error;
     bool ok;
     if (suffix == "png") {
@@ -432,6 +433,8 @@ void MainWindow::loadImageFromFileSlot(const QString &fileName) {
             }
             fileManager.clearCurrentFileName();
             sourceFileName = QFileInfo(fileName).completeBaseName();  // {name} in the Filename Settings
+            preferences.addRecentFile(QFileInfo(fileName).absoluteFilePath());  // File > Open Recent
+            savePreferences();
             loadImage(&image);
             setMouseBusy(false);
             return;

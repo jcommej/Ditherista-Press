@@ -1,6 +1,7 @@
 #include <QtTest>
 #include <QApplication>
 #include <QGraphicsScene>
+#include <QScrollBar>
 #include "viewport/graphicsview.h"
 
 /* Tests for hold-to-compare in the preview (viewport/graphicsview.cpp). Runs on Qt's offscreen platform: no
@@ -36,6 +37,10 @@ private:
 private slots:
     void init() {
         view = new GraphicsView();
+        // these tests are about upstream's left button (hold = original, drag = export): Drag to Pan off
+        GraphicsView::Navigation upstream;
+        upstream.dragPan = false;
+        view->setNavigation(upstream);
         view->resize(300, 300);
         view->show();
         source = filled(qRgb(128, 128, 128));
@@ -118,6 +123,32 @@ private slots:
             view->setDitherImageColor(&dithered, "test");
         }
         QCOMPARE(static_cast<QGraphicsView*>(view)->scene()->items().size(), items + 1);  // + the colour result, set for the first time here
+    }
+
+    void dragToPanMovesThePictureInstead() {
+        // the default since Preferences: the left button pans, Space alone shows the original
+        view->setNavigation(GraphicsView::Navigation());
+        view->setZoomLevel(800, true);  // 480 x 320 in a 300 x 300 view: room to scroll
+        QTest::qWait(20);
+        const int before = view->horizontalScrollBar()->value();
+        press(QPoint(150, 150));
+        QVERIFY(!view->isShowingOriginal());
+        moveHeld(QPoint(110, 150));
+        release(QPoint(110, 150));
+        QCOMPARE(view->horizontalScrollBar()->value(), before + 40);  // the picture follows the pointer
+        QVERIFY(!view->isShowingOriginal());
+        QTest::keyPress(view, Qt::Key_Space);
+        QVERIFY(view->isShowingOriginal());
+        QTest::keyRelease(view, Qt::Key_Space);
+        // Ctrl + left is left to the film's drag out of the window: no pan
+        const int at = view->horizontalScrollBar()->value();
+        QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::ControlModifier, QPoint(150, 150));
+        QMouseEvent move(QEvent::MouseMove, QPointF(140, 150), view->viewport()->mapToGlobal(QPointF(140, 150)),
+                         Qt::NoButton, Qt::LeftButton, Qt::ControlModifier);
+        QApplication::sendEvent(view->viewport(), &move);
+        QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::ControlModifier, QPoint(140, 150));
+        QCOMPARE(view->horizontalScrollBar()->value(), at);
+        QVERIFY(!view->isShowingOriginal());
     }
 
     void newImageReplacesTheOriginal() {

@@ -71,7 +71,7 @@ private slots:
         QSettings settings(path, QSettings::IniFormat);
         read.load(settings);
         QCOMPARE(read.smoothZoom, false);
-        QCOMPARE(read.rightDragPan, true);
+        QCOMPARE(read.dragPan, true);
         QCOMPARE(read.inertia, false);
         QCOMPARE(read.screenPpi, 108.5);
         QCOMPARE(read.autoSuffix, false);
@@ -79,6 +79,92 @@ private slots:
         QCOMPARE(read.nameTemplate, QString("{name}{suffix}_{dpi}.{ext}"));
         QCOMPARE(read.openFolder, QString("C:/pictures"));
         QCOMPARE(read.saveFolder, QString("D:/films"));
+    }
+
+    void newSettingsRoundTrip() {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("preferences.ini");
+        Preferences written;
+        written.zoomIncrement = 25;
+        written.background = Preferences::Background::GraphPaperBlack;
+        written.backgroundGrey = 40;
+        written.previewQuality = 50;
+        written.workingProfile = "adobergb";
+        written.embedProfile = false;
+        written.clipboardContent = Preferences::ClipboardContent::SeparateFiles;
+        written.clipboardFormat = "tif";
+        written.recentFiles = {"a.png", "b.png"};
+        {
+            QSettings settings(path, QSettings::IniFormat);
+            written.save(settings);
+        }
+        Preferences read;
+        QSettings settings(path, QSettings::IniFormat);
+        read.load(settings);
+        QCOMPARE(read.zoomIncrement, 25);
+        QCOMPARE(read.background, Preferences::Background::GraphPaperBlack);
+        QCOMPARE(read.backgroundGrey, 40);
+        QCOMPARE(read.previewQuality, 50);
+        QCOMPARE(read.workingProfile, QString("adobergb"));
+        QCOMPARE(read.embedProfile, false);
+        QCOMPARE(read.clipboardContent, Preferences::ClipboardContent::SeparateFiles);
+        QCOMPARE(read.clipboardFormat, QString("tif"));
+        QCOMPARE(read.recentFiles, QStringList({"a.png", "b.png"}));
+    }
+
+    void badValuesFallBackToDefaults() {
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath("bad.ini"), QSettings::IniFormat);
+        settings.setValue("view/previewQuality", 33);
+        settings.setValue("clipboard/format", "jpg");  // never JPEG
+        settings.setValue("navigation/zoomIncrement", 500);
+        Preferences p;
+        p.load(settings);
+        QCOMPARE(p.previewQuality, 100);
+        QCOMPARE(p.clipboardFormat, QString("png"));
+        QCOMPARE(p.zoomIncrement, 100);
+    }
+
+    void recentFilesKeepTheLastFive() {
+        Preferences p;
+        for (const char* f : {"1", "2", "3", "4", "5", "6"}) p.addRecentFile(f);
+        QCOMPARE(p.recentFiles, QStringList({"6", "5", "4", "3", "2"}));
+        p.addRecentFile("4");  // opened again: moves to the top, no duplicate
+        QCOMPARE(p.recentFiles, QStringList({"4", "6", "5", "3", "2"}));
+    }
+
+    void workingProfilesAreKnown() {
+        QCOMPARE(workingColorSpace("srgb"), QColorSpace(QColorSpace::SRgb));
+        QCOMPARE(workingColorSpace("adobergb"), QColorSpace(QColorSpace::AdobeRgb));
+        QCOMPARE(workingColorSpace("displayp3"), QColorSpace(QColorSpace::DisplayP3));
+        QCOMPARE(workingColorSpace("nonsense"), QColorSpace(QColorSpace::SRgb));
+        QVERIFY(::workingProfiles().size() >= 5);
+    }
+
+    void srgbPicturesAreLeftUntouched() {
+        // the default: an untagged picture and an sRGB one keep every pixel, bit for bit
+        QImage picture(4, 1, QImage::Format_ARGB32);
+        for (int x = 0; x < 4; x++) picture.setPixel(x, 0, qRgb(250, 30 * x, 7 + x));
+        const QImage untagged = toColorSpace(picture, QColorSpace(QColorSpace::SRgb));
+        for (int x = 0; x < 4; x++) QCOMPARE(untagged.pixel(x, 0), picture.pixel(x, 0));
+        QCOMPARE(untagged.colorSpace(), QColorSpace(QColorSpace::SRgb));
+        picture.setColorSpace(QColorSpace(QColorSpace::SRgb));
+        const QImage tagged = toColorSpace(picture, QColorSpace(QColorSpace::SRgb));
+        for (int x = 0; x < 4; x++) QCOMPARE(tagged.pixel(x, 0), picture.pixel(x, 0));
+    }
+
+    void picturesAreConvertedToTheWorkingSpace() {
+        // sRGB red is inside Adobe RGB: less red is needed there to show the same colour
+        QImage red(1, 1, QImage::Format_ARGB32);
+        red.fill(qRgb(255, 0, 0));
+        const QImage adobe = toColorSpace(red, QColorSpace(QColorSpace::AdobeRgb));
+        QCOMPARE(adobe.colorSpace(), QColorSpace(QColorSpace::AdobeRgb));
+        const QRgb p = adobe.pixel(0, 0);
+        QVERIFY2(qRed(p) > 200 && qRed(p) < 235 && qGreen(p) < 10 && qBlue(p) < 10,
+                 qPrintable(QString("%1 %2 %3").arg(qRed(p)).arg(qGreen(p)).arg(qBlue(p))));
+        // and back: an Adobe RGB picture opened with sRGB as the working space
+        const QImage back = toColorSpace(adobe, QColorSpace(QColorSpace::SRgb));
+        QVERIFY(std::abs(qRed(back.pixel(0, 0)) - 255) <= 1);
     }
 
     void missingFileGivesTheDefaults() {
@@ -123,7 +209,7 @@ private slots:
         QWheelEvent up(at, view.viewport()->mapToGlobal(at), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
                        Qt::NoScrollPhase, false);
         QApplication::sendEvent(view.viewport(), &up);
-        QVERIFY(std::abs(view.zoomFactor() - 1.2) < 1e-9);  // wheel up zooms in by one notch
+        QVERIFY(std::abs(view.zoomFactor() - 1.1) < 1e-9);  // wheel up zooms in by one notch: +10 % by default
         const QPointF after = view.mapToScene(at.toPoint());
         QVERIFY(std::abs(after.x() - before.x()) < 1.0 && std::abs(after.y() - before.y()) < 1.0);
     }

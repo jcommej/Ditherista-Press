@@ -5,10 +5,13 @@
 #include "preferences.h"
 #include <QAbstractButton>
 #include <QDialog>
+#include <utility>
+#include <vector>
 
 class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
+class QScrollArea;
 class QVBoxLayout;
 
 /* The windows of the Preferences menu (see preferences.h). Changes apply at once and are reported with
@@ -24,28 +27,29 @@ protected:
     void paintEvent(QPaintEvent* event) override;
 };
 
-/* Filename Settings and Default Folders */
-class FilesDialog final : public QDialog {
+/* All the settings of the Preferences menu but navigation and calibration, one section under the other:
+ * Color Management, Preview Quality, Zoom, Background, Clipboard, Filename Settings, Default Folders.
+ * `changed` names what changed, so MainWindow only redoes what it must (a new working profile reconverts the
+ * picture; a new preview quality resamples it; the rest is instant). */
+class PreferencesDialog final : public QDialog {
     Q_OBJECT
 public:
-    FilesDialog(Preferences* preferences, const FileNameFields& example, QWidget* parent = nullptr);
-    enum class Section { FileNames, Folders };
-    void focusSection(Section section);
+    PreferencesDialog(Preferences* preferences, const FileNameFields& example, QWidget* parent = nullptr);
+    enum class Section { ColorManagement, PreviewQuality, Zoom, Background, Clipboard, FileNames, Folders };
+    void showSection(Section section);  // scrolls to it
+    enum class Change { ColorProfile, PreviewQuality, View, Other };
 signals:
-    void changed();
+    void changed(PreferencesDialog::Change what);
 private:
     Preferences* preferences;
     FileNameFields example;
-    ToggleSwitch* autoSuffix;
-    QLineEdit* suffix;
-    QLineEdit* nameTemplate;
+    QScrollArea* scroll;
+    std::vector<std::pair<Section, QWidget*>> sections;
     QLabel* preview;
-    QLineEdit* openFolder;
-    QLineEdit* saveFolder;
-    QWidget* folderSection;
     void updatePreview();
-    QWidget* sectionHeader(const QString& icon, const QString& title);
+    QWidget* sectionHeader(Section section, const QString& icon, const QString& title);
     QLabel* hint(const QString& text);
+    QLabel* label(const QString& text);
     QWidget* folderRow(QLineEdit* field, const QString& title);
 };
 

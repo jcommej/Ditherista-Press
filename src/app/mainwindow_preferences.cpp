@@ -1,12 +1,20 @@
 #include "mainwindow.h"
+#include "export/filmwriter.h"
+#include "export/psdwriter.h"
+#include <QClipboard>
+#include <QDir>
+#include <QMimeData>
 #include <QScreen>
 #include <QSettings>
 #include <QToolButton>
+#include <QUrl>
 
 /* This file contains:
- * - the Preferences menu (between Edit and Help): navigation in the preview, screen calibration, Filename
- *   Settings and Default Folders (see preferences/preferences.h)
+ * - the Preferences menu (between Edit and Help): navigation in the preview, screen calibration, and the
+ *   Preferences window (colour management, preview quality, zoom, background, clipboard, file names, folders)
  * - the 1:1 and Fit buttons next to the zoom level
+ * - File > Open Recent, Paste Image and Copy to Clipboard
+ * - colour management: the working profile pictures are converted to, and embedded in colour exports
  */
 
 namespace {
@@ -34,16 +42,17 @@ void MainWindow::setupPreferences() {
             applyNavigation();
             savePreferences();
         });
+        return action;
     };
     menu->setToolTipsVisible(true);
-    QAction* navigationTitle = menu->addSection(tr("Navigation"));
-    navigationTitle->setEnabled(false);
-    option(tr("Smooth Zoom Around the Pointer"),
-           tr("The wheel zooms continuously around the point under the pointer.\n"
-              "Off: steps of 10 % around the centre, as in upstream Ditherista."), &Preferences::smoothZoom);
-    option(tr("Pan with Right-Click Drag"),
-           tr("Drag with the right button to move the picture. The left button keeps showing the original "
-              "(hold) and exporting (drag)."), &Preferences::rightDragPan);
+    menu->addSection(tr("Navigation"))->setEnabled(false);
+    smoothZoomAction = option(tr("Smooth Zoom Around the Pointer"),
+                              tr("The wheel zooms continuously around the point under the pointer.\n"
+                                 "Off: steps around the centre, as in upstream Ditherista."), &Preferences::smoothZoom);
+    option(tr("Drag to Pan"),
+           tr("Drag with the left or the right button to move the picture.\nCtrl + drag exports the film as a file, "
+              "Space shows the original.\nOff: hold the left button for the original, drag to export, as in "
+              "upstream Ditherista."), &Preferences::dragPan);
     option(tr("Middle-Click Joystick"),
            tr("Hold the middle button and move away from where you clicked: the view glides that way, faster "
               "the further you go. Release or Esc to stop."), &Preferences::middleJoystick);
@@ -63,11 +72,17 @@ void MainWindow::setupPreferences() {
         }
     });
 
-    menu->addSection(tr("Files"))->setEnabled(false);
-    connect(menu->addAction(tr("Filename Settings...")), &QAction::triggered, this,
-            [this]() { showFilesDialog(FilesDialog::Section::FileNames); });
-    connect(menu->addAction(tr("Default Folders...")), &QAction::triggered, this,
-            [this]() { showFilesDialog(FilesDialog::Section::Folders); });
+    // the Preferences window, opened at the section asked for
+    menu->addSection(tr("Settings"))->setEnabled(false);
+    using Section = PreferencesDialog::Section;
+    for (const auto& [text, section] : std::vector<std::pair<QString, Section>>{
+             {tr("Color Management..."), Section::ColorManagement}, {tr("Preview Quality..."), Section::PreviewQuality},
+             {tr("Zoom..."), Section::Zoom}, {tr("Background..."), Section::Background},
+             {tr("Clipboard..."), Section::Clipboard}, {tr("Filename Settings..."), Section::FileNames},
+             {tr("Default Folders..."), Section::Folders}}) {
+        const Section which = section;
+        connect(menu->addAction(text), &QAction::triggered, this, [this, which]() { showPreferences(which); });
+    }
 
     // 1:1 and Fit, right after the zoom level
     const auto zoomButton = [this](const QString& text, const QString& tip) {
@@ -91,6 +106,7 @@ void MainWindow::setupPreferences() {
         ui->graphicsView->setFocus();
     });
     applyNavigation();
+    setupFileMenu();
 }
 
 void MainWindow::savePreferences() {
@@ -101,15 +117,48 @@ void MainWindow::savePreferences() {
 void MainWindow::applyNavigation() {
     GraphicsView::Navigation navigation;
     navigation.smoothZoom = preferences.smoothZoom;
-    navigation.rightDragPan = preferences.rightDragPan;
+    navigation.dragPan = preferences.dragPan;
     navigation.middleJoystick = preferences.middleJoystick;
     navigation.inertia = preferences.inertia;
     navigation.pinchZoom = preferences.pinchZoom;
+    navigation.zoomIncrement = preferences.zoomIncrement;
     ui->graphicsView->setNavigation(navigation);
+    ui->graphicsView->setBackground(static_cast<GraphicsView::Background>(preferences.background), preferences.backgroundGrey);
+    if (smoothZoomAction != nullptr && smoothZoomAction->isChecked() != preferences.smoothZoom) {
+        const QSignalBlocker blocker(smoothZoomAction);
+        smoothZoomAction->setChecked(preferences.smoothZoom);
+    }
+}
+
+void MainWindow::preferencesChanged(const PreferencesDialog::Change what) {
+    savePreferences();
+    switch (what) {
+        case PreferencesDialog::Change::View:
+            applyNavigation();
+            break;
+        case PreferencesDialog::Change::PreviewQuality:
+            if (!firstLoad) {
+                applyOutputSize(screenGeometry.dpi, printWidthMm, printHeightMm);  // same film, new preview
+            }
+            break;
+        case PreferencesDialog::Change::ColorProfile:
+            if (!firstLoad) {
+                // the picture as read, converted again, then the preview and every result made anew
+                nativeImage = toWorkingSpace(loadedImage).convertToFormat(QImage::Format_ARGB32);
+                applyOutputSize(screenGeometry.dpi, printWidthMm, printHeightMm);  // resamples, re-dithers
+            }
+            break;
+        case PreferencesDialog::Change::Other:
+            break;
+    }
 }
 
 double MainWindow::screenPpi() const {
     return preferences.screenPpi > 0.0 ? preferences.screenPpi : screen()->physicalDotsPerInch();
+}
+
+double MainWindow::previewDpi(const double dpi, const double widthMm, const double heightMm) const {
+    return previewDpiFor(dpi, widthMm, heightMm) * preferences.previewQuality / 100.0;
 }
 
 void MainWindow::zoomToRealSize() {
@@ -125,24 +174,24 @@ void MainWindow::zoomToRealSize() {
     }
 }
 
-void MainWindow::showFilesDialog(const FilesDialog::Section section) {
-    if (filesDialog == nullptr) {
+void MainWindow::showPreferences(const PreferencesDialog::Section section) {
+    if (preferencesDialog == nullptr) {
         FileNameFields example;
         example.name = sourceFileName.isEmpty() ? QStringLiteral("example") : sourceFileName;
         example.dither = "errordiff_floyd-steinberg";
         example.dpi = screenGeometry.dpi;
         example.ext = "png";
-        filesDialog = new FilesDialog(&preferences, example, this);
-        connect(filesDialog, &FilesDialog::changed, this, &MainWindow::savePreferences);
-        connect(filesDialog, &QDialog::finished, this, [this]() {
-            filesDialog->deleteLater();  // made again next time, with the current picture as the example
-            filesDialog = nullptr;
+        preferencesDialog = new PreferencesDialog(&preferences, example, this);
+        connect(preferencesDialog, &PreferencesDialog::changed, this, &MainWindow::preferencesChanged);
+        connect(preferencesDialog, &QDialog::finished, this, [this]() {
+            preferencesDialog->deleteLater();  // made again next time, with the current picture as the example
+            preferencesDialog = nullptr;
         });
     }
-    filesDialog->show();
-    filesDialog->raise();
-    filesDialog->activateWindow();
-    filesDialog->focusSection(section);
+    preferencesDialog->show();
+    preferencesDialog->raise();
+    preferencesDialog->activateWindow();
+    preferencesDialog->showSection(section);
 }
 
 QString MainWindow::suggestedFileName() const {
@@ -155,4 +204,146 @@ QString MainWindow::suggestedFileName() const {
     fields.dpi = screenGeometry.dpi;
     fields.ext = fileManager.currentExtension();
     return fileNameFromTemplate(preferences, fields);
+}
+
+/*************************
+ * COLOUR MANAGEMENT     *
+ *************************/
+
+QImage MainWindow::toWorkingSpace(const QImage& image) const {
+    /* the picture's values in the working profile (see toColorSpace) */
+    return toColorSpace(image, workingColorSpace(preferences.workingProfile));
+}
+
+QImage MainWindow::withProfile(QImage film) const {
+    /* the working profile on a colour film, for the writers to embed; a black and white film has none */
+    if (preferences.embedProfile && film.format() != QImage::Format_Mono && film.format() != QImage::Format_Grayscale8) {
+        film.setColorSpace(workingColorSpace(preferences.workingProfile));
+    } else {
+        film.setColorSpace(QColorSpace());
+    }
+    return film;
+}
+
+/*************************
+ * FILE MENU             *
+ *************************/
+
+void MainWindow::setupFileMenu() {
+    // Open Recent, right after Open: the last files opened, most recent first
+    QMenu* recent = new QMenu(tr("Open Recent"), ui->menuFile);
+    const QList<QAction*> actions = ui->menuFile->actions();
+    const qsizetype openIndex = actions.indexOf(ui->actionOpen);
+    QAction* after = openIndex >= 0 && openIndex + 1 < actions.size() ? actions[openIndex + 1] : nullptr;
+    ui->menuFile->insertMenu(after, recent);
+    connect(recent, &QMenu::aboutToShow, this, [this, recent]() {
+        recent->clear();
+        for (const QString& path : preferences.recentFiles) {
+            QAction* item = recent->addAction(QDir::toNativeSeparators(path));
+            item->setEnabled(QFile::exists(path));  // moved or deleted: shown, greyed
+            connect(item, &QAction::triggered, this, [this, path]() { loadImageFromFileSlot(path); });
+        }
+        if (preferences.recentFiles.isEmpty()) {
+            recent->addAction(tr("(none)"))->setEnabled(false);
+        } else {
+            recent->addSeparator();
+            connect(recent->addAction(tr("Clear Recent")), &QAction::triggered, this, [this]() {
+                preferences.recentFiles.clear();
+                savePreferences();
+            });
+        }
+    });
+
+    // Paste Image and Copy to Clipboard, after the save entries and before Quit
+    QAction* paste = new QAction(tr("Paste Image"), ui->menuFile);
+    paste->setToolTip(tr("Open the picture on the clipboard, e.g. a layer copied in Photoshop (Ctrl+V)"));
+    QAction* copy = new QAction(tr("Copy to Clipboard"), ui->menuFile);
+    copy->setToolTip(tr("The film at the output DPI, without saving it first (Ctrl+C). See Preferences > Clipboard"));
+    const QList<QAction*> entries = ui->menuFile->actions();
+    const qsizetype saveAsIndex = entries.indexOf(ui->actionSaveAs);
+    QAction* beforeQuit = saveAsIndex >= 0 && saveAsIndex + 1 < entries.size() ? entries[saveAsIndex + 1] : nullptr;
+    ui->menuFile->insertSeparator(beforeQuit);
+    ui->menuFile->insertAction(beforeQuit, paste);
+    ui->menuFile->insertAction(beforeQuit, copy);
+    ui->menuFile->setToolTipsVisible(true);
+    connect(paste, &QAction::triggered, this, &MainWindow::pasteSlot);
+    connect(copy, &QAction::triggered, this, &MainWindow::copyToClipboard);
+    connect(ui->menuFile, &QMenu::aboutToShow, this, [this, copy, paste]() {
+        copy->setEnabled(!firstLoad);
+        const QMimeData* clipboard = QGuiApplication::clipboard()->mimeData();
+        paste->setEnabled(clipboard != nullptr && (clipboard->hasImage() || clipboard->hasUrls()));
+    });
+}
+
+void MainWindow::copyToClipboard() {
+    /* the film as Save would write it, onto the clipboard twice: pixels for programs that paste an image, and
+     * files (with DPI and profile) for programs that paste files. The files live in a temp folder, replaced by
+     * the next copy. */
+    if (firstLoad || isDithering) {
+        return;
+    }
+    setMouseBusy(true);
+    if (renderDpi < screenGeometry.dpi) {
+        notification->showText(tr("rendering the film at %1 DPI...").arg(screenGeometry.dpi, 0, 'f', 0), 60000);
+        QApplication::processEvents();
+    }
+    QDir folder(QDir::temp().filePath("ditherista-clipboard"));
+    folder.removeRecursively();
+    QDir().mkpath(folder.path());
+    const QString format = preferences.clipboardFormat;
+    const QString base = QFileInfo(suggestedFileName()).completeBaseName();
+    const auto write = [&](const QString& path, const QImage& image, QString* error) {
+        if (format == "tif") return writeTiff(path, image, screenGeometry.dpi, TiffCompression::PackBits, error);
+        if (format == "psd") return writePsd(path, image, {}, screenGeometry.dpi, error);
+        return writePng(path, image, screenGeometry.dpi, error);
+    };
+    QList<QUrl> files;
+    QImage pixels;
+    QString error;
+    bool ok = true;
+    if (separationActive()) {
+        const std::vector<QImage> films = separationFilmsAtOutput();
+        pixels = withProfile(toFilmImage(separationView(films)));
+        if (preferences.clipboardContent == Preferences::ClipboardContent::SeparateFiles) {
+            const std::vector<InkChannel> inks = separationInks();
+            if (format == "psd") {  // one document holding every ink, as Save writes it
+                const QString path = folder.filePath(base + ".psd");
+                std::vector<PsdSpotChannel> spots;
+                for (size_t i = 0; i < films.size() && i < inks.size(); i++) {
+                    if (!films[i].isNull()) spots.push_back({inks[i].name, inks[i].ink, films[i]});
+                }
+                QImage composite = withProfile(compositeFromFilms(films, inks, separationMode == SeparationMode::RGB));
+                ok = writePsd(path, composite, spots, screenGeometry.dpi, &error,
+                              static_cast<PsdInkLayout>(separationPsdLayoutCombo->currentData().toInt()),
+                              separationMode == SeparationMode::RGB);
+                files << QUrl::fromLocalFile(path);
+            } else {
+                for (size_t i = 0; ok && i < films.size() && i < inks.size(); i++) {
+                    if (films[i].isNull()) continue;  // ink left out
+                    const QString path = folder.filePath(QString("%1_%2.%3").arg(base, inks[i].name, format));
+                    ok = write(path, toFilmImage(films[i]), &error);
+                    files << QUrl::fromLocalFile(path);
+                }
+            }
+        }
+    } else {
+        pixels = withProfile(toFilmImage(renderFilm()));
+    }
+    if (ok && files.isEmpty()) {  // the composite as one file
+        const QString path = folder.filePath(base + "." + format);
+        ok = write(path, pixels, &error);
+        files << QUrl::fromLocalFile(path);
+    }
+    if (!ok) {
+        setMouseBusy(false);
+        notification->showText("<font color=#ec6a5e>" + tr("ERROR") + "</font>\n" + tr("copy failed") + "\n" + error, 3000);
+        return;
+    }
+    QMimeData* data = new QMimeData();
+    data->setImageData(pixels.format() == QImage::Format_Mono ? pixels.convertToFormat(QImage::Format_RGB32) : pixels);
+    data->setUrls(files);
+    QGuiApplication::clipboard()->setMimeData(data, QClipboard::Clipboard);
+    setMouseBusy(false);
+    notification->showText(tr("copied: %1 × %2 px at %3 DPI\n%4 file(s) for programs that paste files")
+                               .arg(pixels.width()).arg(pixels.height()).arg(screenGeometry.dpi, 0, 'f', 0).arg(files.size()), 3000);
 }

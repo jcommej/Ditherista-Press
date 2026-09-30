@@ -161,7 +161,8 @@ OrderedDitherMatrix* MainWindow::applyLpi(OrderedDitherMatrix* matrix, const int
 QImage MainWindow::adoptNativeImage(const QImage* image) {
     /* a new picture: takes its print size from the file's resolution and starts the Output DPI at that same
      * resolution, so the returned working image is the picture itself, unresampled */
-    nativeImage = image->convertToFormat(QImage::Format_ARGB32);
+    loadedImage = *image;  // kept to convert again when the working profile changes
+    nativeImage = toWorkingSpace(*image).convertToFormat(QImage::Format_ARGB32);  // Preferences > Color Management
     const auto dpiOf = [](const int dotsPerMeter) { return dotsPerMeter > 0 ? dotsPerMeter * 0.0254 : SCREEN_DEFAULT_DPI; };
     const double fileDpiX = dpiOf(image->dotsPerMeterX());
     const double fileDpiY = image->dotsPerMeterY() > 0 ? dpiOf(image->dotsPerMeterY()) : fileDpiX;
@@ -177,9 +178,10 @@ QImage MainWindow::adoptNativeImage(const QImage* image) {
     printWidthSpin->setEnabled(true);
     printHeightSpin->setEnabled(true);
 
-    renderDpi = previewDpiFor(dpi, printWidthMm, printHeightMm);
+    renderDpi = previewDpi(dpi, printWidthMm, printHeightMm);
     const QSize size(pixelsFor(printWidthMm, renderDpi), pixelsFor(printHeightMm, renderDpi));
     applyFilterScale(size, renderDpi);
+    ui->graphicsView->setPixelsPerMm(renderDpi / MM_PER_INCH);  // graph paper at the film's scale
     if (size == nativeImage.size()) {
         return nativeImage;
     }
@@ -216,7 +218,8 @@ bool MainWindow::applyOutputSize(const double dpi, const double widthMm, const d
     screenGeometry.dpi = dpi;
     printWidthMm = widthMm;
     printHeightMm = heightMm;
-    renderDpi = previewDpiFor(dpi, widthMm, heightMm);  // the film itself is only rendered on export
+    renderDpi = previewDpi(dpi, widthMm, heightMm);  // the film itself is only rendered on export
+    ui->graphicsView->setPixelsPerMm(renderDpi / MM_PER_INCH);
     const QSize size(pixelsFor(widthMm, renderDpi), pixelsFor(heightMm, renderDpi));
 
     setMouseBusy(true);

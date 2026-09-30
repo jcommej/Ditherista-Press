@@ -1,4 +1,5 @@
 #include "preferencesdialogs.h"
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QDoubleSpinBox>
@@ -12,6 +13,11 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QSlider>
+#include <QStyle>
+#include <QStyleOptionSlider>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
@@ -21,7 +27,7 @@ namespace {
 
 // the look of the mock-ups: dark cards, bold titles over a rule, grey hints
 const char* DIALOG_STYLE = R"(
-QDialog { background: #141518; }
+QDialog, QScrollArea, QWidget#page { background: #141518; }
 QLabel#sectionTitle { color: #e6e8ec; font-size: 15px; font-weight: 600; }
 QFrame#sectionRule { background: #2a2d34; max-height: 1px; min-height: 1px; border: none; }
 QLabel#fieldLabel { color: #c9ccd2; font-weight: 600; }
@@ -38,6 +44,54 @@ QPushButton#browse:hover { background: #262c36; }
 QFont monospace() {
     return QFontDatabase::systemFont(QFontDatabase::FixedFont);
 }
+
+// a combo box listing (text, value) pairs, set to `current`, calling `picked` with the value chosen
+template <typename T>
+QComboBox* choice(QWidget* parent, const std::vector<std::pair<QString, T>>& items, const T& current,
+                  const std::function<void(const T&)>& picked) {
+    QComboBox* combo = new QComboBox(parent);
+    for (size_t i = 0; i < items.size(); i++) {
+        combo->addItem(items[i].first);
+        if (items[i].second == current) {
+            combo->setCurrentIndex(static_cast<int>(i));
+        }
+    }
+    QObject::connect(combo, &QComboBox::currentIndexChanged, parent, [items, picked](const int index) {
+        if (index >= 0) picked(items[static_cast<size_t>(index)].second);
+    });
+    return combo;
+}
+
+// the grey slider: a white-to-black groove, and a mark under the default grey
+class GreySlider final : public QSlider {
+public:
+    GreySlider(const int markAt, QWidget* parent) : QSlider(Qt::Horizontal, parent), mark(markAt) {
+        setRange(0, 255);
+        setMinimumHeight(30);
+        setStyleSheet("QSlider::groove:horizontal { height: 8px; border-radius: 4px; border: 1px solid #3a3f48;"
+                      "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ffffff, stop:1 #000000); }"
+                      "QSlider::sub-page:horizontal, QSlider::add-page:horizontal { background: transparent; }"
+                      "QSlider::handle:horizontal { background: #9fc3e6; width: 14px; margin: -5px 0; border-radius: 7px; }");
+    }
+protected:
+    void paintEvent(QPaintEvent* event) override {
+        QSlider::paintEvent(event);
+        QStyleOptionSlider option;
+        initStyleOption(&option);
+        const QRect groove = style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderGroove, this);
+        const QRect handle = style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderHandle, this);
+        const int x = groove.left() + handle.width() / 2 +
+                      QStyle::sliderPositionFromValue(minimum(), maximum(), mark, groove.width() - handle.width());
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0x9f, 0xc3, 0xe6));
+        const double y = groove.center().y() + 9.0;  // a small triangle under the groove
+        painter.drawPolygon(QPolygonF({QPointF(x, y), QPointF(x - 4.0, y + 6.0), QPointF(x + 4.0, y + 6.0)}));
+    }
+private:
+    int mark;
+};
 
 }  // namespace
 
@@ -65,14 +119,14 @@ void ToggleSwitch::paintEvent(QPaintEvent*) {
     painter.drawEllipse(QRectF(x, track.top() + 3.0, knob, knob));
 }
 
-/*****************************************
- * FILENAME SETTINGS AND DEFAULT FOLDERS *
- *****************************************/
+/*********************
+ * PREFERENCES       *
+ *********************/
 
-QWidget* FilesDialog::sectionHeader(const QString& icon, const QString& title) {
-    QWidget* header = new QWidget(this);
+QWidget* PreferencesDialog::sectionHeader(const Section section, const QString& icon, const QString& title) {
+    QWidget* header = new QWidget(scroll->widget());
     QVBoxLayout* column = new QVBoxLayout(header);
-    column->setContentsMargins(0, 8, 0, 4);
+    column->setContentsMargins(0, 14, 0, 4);
     QHBoxLayout* line = new QHBoxLayout();
     QLabel* picture = new QLabel(header);
     picture->setPixmap(QIcon(icon).pixmap(16, 16));
@@ -84,18 +138,25 @@ QWidget* FilesDialog::sectionHeader(const QString& icon, const QString& title) {
     rule->setObjectName("sectionRule");
     column->addLayout(line);
     column->addWidget(rule);
+    sections.emplace_back(section, header);
     return header;
 }
 
-QLabel* FilesDialog::hint(const QString& text) {
-    QLabel* label = new QLabel(text, this);
-    label->setObjectName("hint");
-    label->setWordWrap(true);
-    return label;
+QLabel* PreferencesDialog::hint(const QString& text) {
+    QLabel* l = new QLabel(text, scroll->widget());
+    l->setObjectName("hint");
+    l->setWordWrap(true);
+    return l;
 }
 
-QWidget* FilesDialog::folderRow(QLineEdit* field, const QString& title) {
-    QWidget* row = new QWidget(this);
+QLabel* PreferencesDialog::label(const QString& text) {
+    QLabel* l = new QLabel(text, scroll->widget());
+    l->setObjectName("fieldLabel");
+    return l;
+}
+
+QWidget* PreferencesDialog::folderRow(QLineEdit* field, const QString& title) {
+    QWidget* row = new QWidget(scroll->widget());
     QHBoxLayout* line = new QHBoxLayout(row);
     line->setContentsMargins(0, 0, 0, 0);
     field->setFont(monospace());
@@ -115,107 +176,241 @@ QWidget* FilesDialog::folderRow(QLineEdit* field, const QString& title) {
     return row;
 }
 
-FilesDialog::FilesDialog(Preferences* preferences, const FileNameFields& example, QWidget* parent)
+PreferencesDialog::PreferencesDialog(Preferences* preferences, const FileNameFields& example, QWidget* parent)
     : QDialog(parent), preferences(preferences), example(example) {
-    setWindowTitle(tr("Files and Folders"));
+    setWindowTitle(tr("Preferences"));
     setStyleSheet(DIALOG_STYLE);
-    setMinimumWidth(620);
-    QVBoxLayout* column = new QVBoxLayout(this);
-    column->setContentsMargins(18, 12, 18, 16);
+    resize(660, 720);
+    QVBoxLayout* outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 12);
+    scroll = new QScrollArea(this);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    QWidget* page = new QWidget();
+    page->setObjectName("page");
+    scroll->setWidget(page);
+    outer->addWidget(scroll, 1);
+    QVBoxLayout* column = new QVBoxLayout(page);
+    column->setContentsMargins(18, 4, 18, 12);
     column->setSpacing(6);
-    const auto label = [this](const QString& text) {
-        QLabel* l = new QLabel(text, this);
-        l->setObjectName("fieldLabel");
-        return l;
-    };
+    const auto changedNow = [this](const Change what) { emit changed(what); };
+
+    // Color Management
+    column->addWidget(sectionHeader(Section::ColorManagement, ":/resources/pref_color.svg", tr("Color Management")));
+    column->addWidget(label(tr("Working Color Profile")));
+    std::vector<std::pair<QString, QString>> profiles;
+    for (const WorkingProfile& p : workingProfiles()) {
+        profiles.emplace_back(p.name, p.id);
+    }
+    column->addWidget(choice<QString>(this, profiles, preferences->workingProfile, [this, changedNow](const QString& id) {
+        this->preferences->workingProfile = id;
+        changedNow(Change::ColorProfile);
+    }));
+    column->addWidget(hint(tr("Pictures are converted from their own profile (sRGB when they have none) into this "
+                              "space before any adjustment or dithering; palette colours and HEX values are "
+                              "values in this space. sRGB suits most work and every screen; Adobe RGB, Display P3, "
+                              "ProPhoto and Rec. 2020 keep more saturated colours for the separations. The preview "
+                              "shows the values as they are, without converting them for the screen.")));
+    QHBoxLayout* embedLine = new QHBoxLayout();
+    ToggleSwitch* embed = new ToggleSwitch(page);
+    embed->setChecked(preferences->embedProfile);
+    embedLine->addWidget(label(tr("Embed the profile in colour exports")), 1);
+    embedLine->addWidget(embed);
+    column->addLayout(embedLine);
+    column->addWidget(hint(tr("Colour PNG, TIFF and PSD files carry the working profile, so other programs read "
+                              "their colours right. Black and white films have no colour and no profile.")));
+    connect(embed, &QAbstractButton::toggled, this, [this, changedNow](const bool on) {
+        this->preferences->embedProfile = on;
+        changedNow(Change::Other);
+    });
+
+    // Preview Quality
+    column->addWidget(sectionHeader(Section::PreviewQuality, ":/resources/pref_preview.svg", tr("Preview Quality")));
+    column->addWidget(choice<int>(this, {{tr("Original (100%) - best quality (default)"), 100},
+                                         {tr("Medium (75%) - about 2x faster"), 75},
+                                         {tr("Low (50%) - about 4x faster"), 50}},
+                                  preferences->previewQuality, [this, changedNow](const int quality) {
+        this->preferences->previewQuality = quality;
+        changedNow(Change::PreviewQuality);
+    }));
+    column->addWidget(hint(tr("How it works: lower settings render the preview from a smaller copy of the picture, "
+                              "shown at the same size on screen. This makes the preview much faster for large "
+                              "films.\nLow (50%): about 4x faster, for quick edits and large pictures (4K and "
+                              "more). Medium (75%): about 2x faster, balanced. Original (100%): full resolution "
+                              "preview, slowest but most accurate.\nNote: saved films, copies and PSDs are always "
+                              "rendered at full quality, whatever this setting.")));
+
+    // Zoom
+    column->addWidget(sectionHeader(Section::Zoom, ":/resources/pref_zoom.svg", tr("Zoom")));
+    column->addWidget(label(tr("Zoom Mode")));
+    column->addWidget(choice<bool>(this, {{tr("Smooth, around the pointer (default)"), true},
+                                          {tr("Stepped, around the centre (upstream Ditherista)"), false}},
+                                   preferences->smoothZoom, [this, changedNow](const bool smooth) {
+        this->preferences->smoothZoom = smooth;
+        changedNow(Change::View);
+    }));
+    column->addWidget(label(tr("Zoom Increment (%)")));
+    QHBoxLayout* incrementLine = new QHBoxLayout();
+    QSlider* increment = new QSlider(Qt::Horizontal, page);
+    increment->setRange(1, 50);
+    increment->setValue(preferences->zoomIncrement);
+    QLabel* incrementValue = label(QString("%1 %").arg(preferences->zoomIncrement));
+    incrementValue->setMinimumWidth(48);
+    incrementLine->addWidget(increment, 1);
+    incrementLine->addWidget(incrementValue);
+    column->addLayout(incrementLine);
+    column->addWidget(hint(tr("How much one notch of the wheel zooms: that many points in stepped mode (10 % is "
+                              "upstream's step), that many percent of the current zoom in smooth mode.")));
+    connect(increment, &QSlider::valueChanged, this, [this, incrementValue, changedNow](const int value) {
+        this->preferences->zoomIncrement = value;
+        incrementValue->setText(QString("%1 %").arg(value));
+        changedNow(Change::View);
+    });
+
+    // Background
+    column->addWidget(sectionHeader(Section::Background, ":/resources/pref_grid.svg", tr("Background")));
+    column->addWidget(choice<Preferences::Background>(
+        this, {{tr("Solid colour"), Preferences::Background::Solid},
+               {tr("Graph paper, white (1 mm, thick line every 1 cm)"), Preferences::Background::GraphPaperWhite},
+               {tr("Graph paper, black (1 mm, thick line every 1 cm)"), Preferences::Background::GraphPaperBlack}},
+        preferences->background, [this, changedNow](const Preferences::Background mode) {
+            this->preferences->background = mode;
+            changedNow(Change::View);
+        }));
+    QHBoxLayout* greyLine = new QHBoxLayout();
+    QSlider* grey = new GreySlider(Preferences().backgroundGrey, page);  // marked at the default grey
+    grey->setValue(preferences->backgroundGrey);
+    grey->setToolTip(tr("White on the left, black on the right; the mark is the default grey"));
+    QPushButton* greyReset = new QPushButton(tr("Default"), page);
+    greyReset->setObjectName("browse");
+    greyLine->addWidget(label(tr("White")));
+    greyLine->addWidget(grey, 1);
+    greyLine->addWidget(label(tr("Black")));
+    greyLine->addWidget(greyReset);
+    column->addLayout(greyLine);
+    column->addWidget(hint(tr("The colour around the picture, for the solid background: the mark is the "
+                              "default grey. The graph paper follows the film's real size: one thin line per "
+                              "millimetre, a thick one per centimetre, from the picture's corner.")));
+    connect(grey, &QSlider::valueChanged, this, [this, changedNow](const int value) {
+        this->preferences->backgroundGrey = value;
+        changedNow(Change::View);
+    });
+    connect(greyReset, &QPushButton::clicked, this, [grey]() { grey->setValue(Preferences().backgroundGrey); });
+
+    // Clipboard
+    column->addWidget(sectionHeader(Section::Clipboard, ":/resources/pref_clipboard.svg", tr("Clipboard")));
+    column->addWidget(label(tr("Copy to Clipboard puts")));
+    column->addWidget(choice<Preferences::ClipboardContent>(
+        this, {{tr("The film as shown - composite, lossless (default)"), Preferences::ClipboardContent::Composite},
+               {tr("Separate channels - one file per ink, when separating"), Preferences::ClipboardContent::SeparateFiles}},
+        preferences->clipboardContent, [this, changedNow](const Preferences::ClipboardContent content) {
+            this->preferences->clipboardContent = content;
+            changedNow(Change::Other);
+        }));
+    column->addWidget(label(tr("File Format of the Copies")));
+    column->addWidget(choice<QString>(this, {{tr("PNG"), "png"}, {tr("TIFF (PackBits, lossless)"), "tif"}, {tr("PSD"), "psd"}},
+                                      preferences->clipboardFormat, [this, changedNow](const QString& format) {
+        this->preferences->clipboardFormat = format;
+        changedNow(Change::Other);
+    }));
+    column->addWidget(hint(tr("The copy is rendered at the output DPI, like Save. It goes on the clipboard twice: "
+                              "as pixels, for programs that paste an image (the resolution is then set in the "
+                              "program), and as files with the DPI and profile inside, for programs that paste "
+                              "files (Explorer, a folder, some layout programs). Separate channels copy one file "
+                              "per ink; the pixels are the simulated print.")));
 
     // Filename Settings
-    column->addWidget(sectionHeader(":/resources/file.svg", tr("Filename Settings")));
+    column->addWidget(sectionHeader(Section::FileNames, ":/resources/file.svg", tr("Filename Settings")));
     QHBoxLayout* suffixLine = new QHBoxLayout();
-    autoSuffix = new ToggleSwitch(this);
+    ToggleSwitch* autoSuffix = new ToggleSwitch(page);
     autoSuffix->setChecked(preferences->autoSuffix);
     suffixLine->addWidget(label(tr("Auto-Add Suffix")), 1);
     suffixLine->addWidget(autoSuffix);
     column->addLayout(suffixLine);
     column->addWidget(label(tr("Filename Suffix")));
-    suffix = new QLineEdit(preferences->suffix, this);
+    QLineEdit* suffix = new QLineEdit(preferences->suffix, page);
     column->addWidget(suffix);
     column->addWidget(hint(tr("Text appended to the file name (e.g. \"image_errordiff_floyd-steinberg.png\"). "
                               "It may use {dither} and {dpi}.")));
     column->addWidget(label(tr("Filename Template")));
-    nameTemplate = new QLineEdit(preferences->nameTemplate, this);
+    QLineEdit* nameTemplate = new QLineEdit(preferences->nameTemplate, page);
     column->addWidget(nameTemplate);
     column->addWidget(hint(tr("Pattern: {name} = picture file name, {suffix} = suffix, {ext} = extension, "
                               "{dither} = algorithm, {dpi} = output DPI. Separated inks add _Cyan, _Magenta... "
                               "to the name.")));
-    QFrame* previewBox = new QFrame(this);
+    QFrame* previewBox = new QFrame(page);
     previewBox->setObjectName("previewBox");
     QHBoxLayout* previewLine = new QHBoxLayout(previewBox);
     previewLine->setContentsMargins(12, 10, 12, 10);
-    QLabel* previewLabel = label(tr("Preview:"));
     preview = new QLabel(previewBox);
     preview->setObjectName("previewChip");
     preview->setFont(monospace());
     preview->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    previewLine->addWidget(previewLabel);
+    previewLine->addWidget(label(tr("Preview:")));
     previewLine->addWidget(preview);
     previewLine->addStretch(1);
     column->addWidget(previewBox);
+    connect(autoSuffix, &QAbstractButton::toggled, this, [this, suffix, changedNow](const bool on) {
+        this->preferences->autoSuffix = on;
+        suffix->setEnabled(on);
+        updatePreview();
+        changedNow(Change::Other);
+    });
+    connect(suffix, &QLineEdit::textChanged, this, [this, changedNow](const QString& text) {
+        this->preferences->suffix = text;
+        updatePreview();
+        changedNow(Change::Other);
+    });
+    connect(nameTemplate, &QLineEdit::textChanged, this, [this, changedNow](const QString& text) {
+        this->preferences->nameTemplate = text;
+        updatePreview();
+        changedNow(Change::Other);
+    });
+    suffix->setEnabled(preferences->autoSuffix);
 
     // Default Folders
-    folderSection = sectionHeader(":/resources/folder.svg", tr("Default Folders"));
-    column->addSpacing(10);
-    column->addWidget(folderSection);
+    column->addWidget(sectionHeader(Section::Folders, ":/resources/folder.svg", tr("Default Folders")));
     column->addWidget(label(tr("Default Open Folder")));
-    openFolder = new QLineEdit(QDir::toNativeSeparators(preferences->openFolder), this);
+    QLineEdit* openFolder = new QLineEdit(QDir::toNativeSeparators(preferences->openFolder), page);
     column->addWidget(folderRow(openFolder, tr("Default Open Folder")));
     column->addWidget(hint(tr("Where Open starts. Leave empty to start in the folder used last. "
                               "Your setting is saved automatically.")));
     column->addWidget(label(tr("Default Save Folder")));
-    saveFolder = new QLineEdit(QDir::toNativeSeparators(preferences->saveFolder), this);
+    QLineEdit* saveFolder = new QLineEdit(QDir::toNativeSeparators(preferences->saveFolder), page);
     column->addWidget(folderRow(saveFolder, tr("Default Save Folder")));
     column->addWidget(hint(tr("Where Save and Save As start for a new film. Leave empty to save next to the "
                               "picture or in the folder used last. Your setting is saved automatically.")));
-    QDialogButtonBox* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
-    column->addSpacing(8);
-    column->addWidget(buttons);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::accept);
-
-    // every change is kept at once
-    connect(autoSuffix, &QAbstractButton::toggled, this, [this](const bool on) {
-        this->preferences->autoSuffix = on;
-        suffix->setEnabled(on);
-        updatePreview();
-        emit changed();
-    });
-    connect(suffix, &QLineEdit::textChanged, this, [this](const QString& text) {
-        this->preferences->suffix = text;
-        updatePreview();
-        emit changed();
-    });
-    connect(nameTemplate, &QLineEdit::textChanged, this, [this](const QString& text) {
-        this->preferences->nameTemplate = text;
-        updatePreview();
-        emit changed();
-    });
-    connect(openFolder, &QLineEdit::editingFinished, this, [this]() {
+    connect(openFolder, &QLineEdit::editingFinished, this, [this, openFolder, changedNow]() {
         this->preferences->openFolder = QDir::fromNativeSeparators(openFolder->text().trimmed());
-        emit changed();
+        changedNow(Change::Other);
     });
-    connect(saveFolder, &QLineEdit::editingFinished, this, [this]() {
+    connect(saveFolder, &QLineEdit::editingFinished, this, [this, saveFolder, changedNow]() {
         this->preferences->saveFolder = QDir::fromNativeSeparators(saveFolder->text().trimmed());
-        emit changed();
+        changedNow(Change::Other);
     });
-    suffix->setEnabled(preferences->autoSuffix);
+    column->addStretch(1);
+
+    QDialogButtonBox* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
+    QHBoxLayout* bottom = new QHBoxLayout();
+    bottom->setContentsMargins(18, 0, 18, 0);
+    bottom->addWidget(buttons);
+    outer->addLayout(bottom);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::accept);
     updatePreview();
 }
 
-void FilesDialog::updatePreview() {
+void PreferencesDialog::updatePreview() {
     preview->setText(fileNameFromTemplate(*preferences, example));
 }
 
-void FilesDialog::focusSection(const Section section) {
-    (section == Section::Folders ? openFolder : suffix)->setFocus();
+void PreferencesDialog::showSection(const Section section) {
+    for (const auto& [which, header] : sections) {
+        if (which == section) {
+            // the section's title at the top of the page
+            scroll->verticalScrollBar()->setValue(header->y());
+        }
+    }
 }
 
 /*********************

@@ -1,14 +1,31 @@
 #include "preferences.h"
+#include <QObject>
 #include <QRegularExpression>
 #include <QSettings>
+#include <algorithm>
 
 void Preferences::load(QSettings& settings) {
     const Preferences defaults;
     smoothZoom = settings.value("navigation/smoothZoom", defaults.smoothZoom).toBool();
-    rightDragPan = settings.value("navigation/rightDragPan", defaults.rightDragPan).toBool();
+    dragPan = settings.value("navigation/dragPan", defaults.dragPan).toBool();
     middleJoystick = settings.value("navigation/middleJoystick", defaults.middleJoystick).toBool();
     inertia = settings.value("navigation/inertia", defaults.inertia).toBool();
     pinchZoom = settings.value("navigation/pinchZoom", defaults.pinchZoom).toBool();
+    zoomIncrement = std::clamp(settings.value("navigation/zoomIncrement", defaults.zoomIncrement).toInt(), 1, 100);
+    background = static_cast<Background>(std::clamp(settings.value("view/background", static_cast<int>(defaults.background)).toInt(), 0, 2));
+    backgroundGrey = std::clamp(settings.value("view/backgroundGrey", defaults.backgroundGrey).toInt(), 0, 255);
+    previewQuality = settings.value("view/previewQuality", defaults.previewQuality).toInt();
+    if (previewQuality != 50 && previewQuality != 75) {
+        previewQuality = 100;
+    }
+    workingProfile = settings.value("color/workingProfile", defaults.workingProfile).toString();
+    embedProfile = settings.value("color/embedProfile", defaults.embedProfile).toBool();
+    clipboardContent = static_cast<ClipboardContent>(std::clamp(settings.value("clipboard/content", static_cast<int>(defaults.clipboardContent)).toInt(), 0, 1));
+    clipboardFormat = settings.value("clipboard/format", defaults.clipboardFormat).toString();
+    if (clipboardFormat != "tif" && clipboardFormat != "psd") {
+        clipboardFormat = "png";
+    }
+    recentFiles = settings.value("recent/files").toStringList().mid(0, MAX_RECENT_FILES);
     screenPpi = settings.value("screen/ppi", defaults.screenPpi).toDouble();
     autoSuffix = settings.value("files/autoSuffix", defaults.autoSuffix).toBool();
     suffix = settings.value("files/suffix", defaults.suffix).toString();
@@ -19,10 +36,19 @@ void Preferences::load(QSettings& settings) {
 
 void Preferences::save(QSettings& settings) const {
     settings.setValue("navigation/smoothZoom", smoothZoom);
-    settings.setValue("navigation/rightDragPan", rightDragPan);
+    settings.setValue("navigation/dragPan", dragPan);
     settings.setValue("navigation/middleJoystick", middleJoystick);
     settings.setValue("navigation/inertia", inertia);
     settings.setValue("navigation/pinchZoom", pinchZoom);
+    settings.setValue("navigation/zoomIncrement", zoomIncrement);
+    settings.setValue("view/background", static_cast<int>(background));
+    settings.setValue("view/backgroundGrey", backgroundGrey);
+    settings.setValue("view/previewQuality", previewQuality);
+    settings.setValue("color/workingProfile", workingProfile);
+    settings.setValue("color/embedProfile", embedProfile);
+    settings.setValue("clipboard/content", static_cast<int>(clipboardContent));
+    settings.setValue("clipboard/format", clipboardFormat);
+    settings.setValue("recent/files", recentFiles);
     settings.setValue("screen/ppi", screenPpi);
     settings.setValue("files/autoSuffix", autoSuffix);
     settings.setValue("files/suffix", suffix);
@@ -30,6 +56,50 @@ void Preferences::save(QSettings& settings) const {
     settings.setValue("folders/open", openFolder);
     settings.setValue("folders/save", saveFolder);
     settings.sync();
+}
+
+void Preferences::addRecentFile(const QString& path) {
+    recentFiles.removeAll(path);
+    recentFiles.prepend(path);
+    while (recentFiles.size() > MAX_RECENT_FILES) {
+        recentFiles.removeLast();
+    }
+}
+
+const std::vector<WorkingProfile>& workingProfiles() {
+    static const std::vector<WorkingProfile> profiles = {
+        {"srgb", QObject::tr("sRGB IEC61966-2.1 (default)"), QColorSpace::SRgb},
+        {"adobergb", QObject::tr("Adobe RGB (1998)"), QColorSpace::AdobeRgb},
+        {"displayp3", QObject::tr("Display P3"), QColorSpace::DisplayP3},
+        {"prophoto", QObject::tr("ProPhoto RGB"), QColorSpace::ProPhotoRgb},
+        {"rec2020", QObject::tr("Rec. 2020 (BT.2020)"), QColorSpace::Bt2020},
+    };
+    return profiles;
+}
+
+QColorSpace workingColorSpace(const QString& id) {
+    for (const WorkingProfile& profile : workingProfiles()) {
+        if (profile.id == id) {
+            return QColorSpace(profile.space);
+        }
+    }
+    return QColorSpace(QColorSpace::SRgb);
+}
+
+QImage toColorSpace(const QImage& image, const QColorSpace& target) {
+    QImage result = image.depth() < 24 ? image.convertToFormat(QImage::Format_ARGB32) : image;
+    QColorSpace source = image.colorSpace();
+    if (!source.isValid()) {
+        source = QColorSpace(QColorSpace::SRgb);
+    }
+    if (source.colorModel() != QColorSpace::ColorModel::Rgb) {
+        return result;
+    }
+    result.setColorSpace(source);
+    if (source != target) {
+        result.convertToColorSpace(target);
+    }
+    return result;
 }
 
 QString fileNameFromTemplate(const Preferences& preferences, const FileNameFields& fields) {

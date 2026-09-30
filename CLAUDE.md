@@ -108,8 +108,8 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `color/colorspace.*` | exact sRGB ↔ CIELAB (D65, CIE ε/κ), gamut test and chroma clamp, HEX parse/format |
 | `palette/palettemodel.*` | palette entries + locks, 2..256 limits, seeded randomize, "least represented" colour, Paint.NET I/O (locks in a `;Locked:` comment; the one reader for every palette file), `PaletteHistory` (undo/redo, picker sessions) |
 | `palette/paletteeditor.*` | Palette tab colour list: [swatch][#HEX][lock][delete][🔀] rows, Add / Randomize / Save / Load |
-| `preferences/preferences.*` | Preferences (navigation flags, screen PPI, file-name template, default folders) in `%APPDATA%/ditherista/preferences.ini`; `fileNameFromTemplate` |
-| `preferences/preferencesdialogs.*` | Files and Folders dialog (Filename Settings + Default Folders, styled after the user's mock-ups), screen calibration dialog, `ToggleSwitch` |
+| `preferences/preferences.*` | Preferences (navigation, zoom increment, background, preview quality, working profile, clipboard, recent files, screen PPI, file-name template, folders) in `%APPDATA%/ditherista/preferences.ini`; `fileNameFromTemplate`, `toColorSpace` |
+| `preferences/preferencesdialogs.*` | Preferences window (one scrolling page of sections, styled after the user's mock-ups), screen calibration dialog, `ToggleSwitch` |
 | `palette/labpanel.*`, `palette/colourpickerdialog.*` | colour picker: Qt's QColorDialog embedded + LAB panel (3D gamut cloud, a*b* slice, L* slider), one colour, live |
 
 ### MainWindow additions
@@ -157,11 +157,19 @@ or a short-lived full-resolution cache for export, without duplicating them.
   Measured on 16 MP: ~0.1-0.2 s per live frame, 3.6 s full.
 - LAB panel: follows the user's HTML mock-up, except L* is the vertical axis of the 3D view (matches the L*
   slider). Out-of-gamut picks are clamped to the sRGB edge (same L*, same hue).
-- **Preview mouse roles (the user insists): left hold = original, left drag = export the file, double-click = 100 %,
-  Space = original.** Navigation from plotterfun (`D:\Documents\plotterfun\plotterfun\ui.js`), each switchable in
-  Preferences: smooth wheel zoom around the pointer (wheel up = in; off = upstream steps, wheel up = out),
-  **right-drag pan**, middle-button joystick (hold, Esc stops), inertia, pinch. 1:1 = `screenPpi / renderDpi`
+- **Preview mouse roles (decided by the user, changed once already): left or right drag = pan, Ctrl + left drag =
+  export the file, Space = original, double-click = 100 %.** Preferences > Drag to Pan off gives upstream back
+  (left hold = original, left drag = export). Navigation from plotterfun (`D:\Documents\plotterfun\plotterfun\ui.js`),
+  each switchable: smooth wheel zoom around the pointer (wheel up = in; stepped = upstream, wheel up = out), zoom
+  increment (default 10 %), middle-button joystick (hold, Esc stops), inertia, pinch. 1:1 = `screenPpi / renderDpi`
   (the scene is at the preview DPI), screen PPI from Calibrate Screen or the system's. Zoom 2 %..1600 %.
+- **Colour management = working space + export** (user's choice): pictures converted from their embedded profile
+  (untagged = sRGB) to the working profile (sRGB default: untagged/sRGB pictures untouched, bit for bit); colour
+  PNG/TIFF/PSD carry it (TIFF tag 34675, PSD resource 1039, PNG via Qt); 1-bit films never. No display conversion.
+- Preview Quality 100/75/50 % scales the preview DPI (`previewDpi`); export always full. View background: grey
+  slider (default mid grey, marked) or graph paper white/black at the film's scale (`GraphicsView::drawBackground`).
+- Copy to Clipboard (File, and Edit > Copy): pixels + files in `%TEMP%/ditherista-clipboard` (PNG/TIFF/PSD with DPI
+  and profile); separate channels as one file per ink (or one PSD). File > Open Recent (5), Paste Image.
 - Save name = Filename Settings template (default `{name}{suffix}.{ext}`, suffix `_{dither}`); upstream proposed
   the algorithm name only.
 - Postponed by the user: dot shapes (maybe with other algorithms), histogram, dot cut-off / high-cut overlay.
