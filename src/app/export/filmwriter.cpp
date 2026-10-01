@@ -186,7 +186,7 @@ bool writeTiff(const QString& path, const QImage& source, const double dpi, cons
     out.align();
     const uint32_t resolutionAt = static_cast<uint32_t>(out.size());
     out.u32(num); out.u32(den);  // X and Y share the same rational
-    const QByteArray software = QByteArrayLiteral("Ditherista (screen printing)");
+    const QByteArray software = QByteArrayLiteral("Ditherista Press");
     const uint32_t softwareAt = static_cast<uint32_t>(out.size());
     out.put(reinterpret_cast<const uint8_t*>(software.constData()), static_cast<size_t>(software.size()));
     out.u8(0);

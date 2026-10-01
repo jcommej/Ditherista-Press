@@ -1,4 +1,4 @@
-# CLAUDE.md — Ditherista, screen-printing fork
+# CLAUDE.md — Ditherista Press, screen-printing fork
 
 Fork of [robertkist/ditherista](https://github.com/robertkist/ditherista) (Qt 6 / C++20 GUI over the
 `libdither` C library, MIT) turned into a tool for preparing **screen-printing films**: physical print size,

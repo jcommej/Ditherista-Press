@@ -169,7 +169,7 @@ void MainWindow::uiSetup() {
     aboutWindow = new AboutWindow(this);
     setWindowTitle(aboutWindow->appTitle); // needs to be set up after the about window has been initialized
     QAction* actionAbout = new QAction(this);
-    actionAbout->setText(tr("About Ditherista"));
+    actionAbout->setText(tr("About Ditherista Press"));
     actionAbout->setMenuRole(QAction::ApplicationSpecificRole);
     connect(actionAbout, SIGNAL(triggered()), aboutWindow, SLOT(show()));
 #if defined(__APPLE__) && defined(__MACH__)  // menubar for macOS
