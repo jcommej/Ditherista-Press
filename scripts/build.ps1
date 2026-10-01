@@ -1,4 +1,4 @@
-# Builds Ditherista on Windows with the toolchain from setup-toolchain.ps1.
+# Builds Ditherista Press on Windows with the toolchain from setup-toolchain.ps1.
 #   .\scripts\build.ps1            -> libdither (if missing) + the app, into dist\ditherista\ditherista.exe
 #   .\scripts\build.ps1 -Tests     -> also builds and runs the unit tests (tests\run_tests.ps1)
 param([switch]$Tests, [string]$QtRoot = "C:\Qt", [string]$QtVersion = "6.9.3")
@@ -17,7 +17,7 @@ try {
         Pop-Location
     }
     # a running ditherista.exe locks the file: the compile succeeds but the final copy fails
-    if (Get-Process ditherista -ErrorAction SilentlyContinue) { Write-Warning "Close Ditherista first: dist\ditherista\ditherista.exe is in use." }
+    if (Get-Process ditherista -ErrorAction SilentlyContinue) { Write-Warning "Close Ditherista Press first: dist\ditherista\ditherista.exe is in use." }
     make app
     $code = $LASTEXITCODE
     # the build regenerates the translation source; never commit that noise

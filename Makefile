@@ -9,6 +9,7 @@ MAC_QT_BIN_PATH=~/Qt/6.9.2/macos/bin
 
 APPNAME=ditherista
 APPNAME_CS=Ditherista
+APP_TITLE=Ditherista Press
 APP_YEAR=2025
 APP_VERSION=$(APP_YEAR).10.04a.RC3
 APP_HOMEPAGE=http://github.com/robertkist
@@ -40,7 +41,7 @@ ABOUT_INI_PATH=src\\app\\resources\\about.ini
 define fn_make_about_ini
 	-@del $(ABOUT_INI_PATH)
 	@echo [about]>$(ABOUT_INI_PATH)
-	@echo title=$(APPNAME_CS)>>$(ABOUT_INI_PATH)
+	@echo title=$(APP_TITLE)>>$(ABOUT_INI_PATH)
 	@echo version=$(1)>>$(ABOUT_INI_PATH)
 	@echo homepage=$(2)>>$(ABOUT_INI_PATH)
 	@echo year=$(3)>>$(ABOUT_INI_PATH)
@@ -68,7 +69,7 @@ ABOUT_INI_PATH=src/app/resources/about.ini
 define fn_make_about_ini
 	-rm -f $(ABOUT_INI_PATH)
 	echo "[about]">$(ABOUT_INI_PATH)
-	echo "title=$(APPNAME_CS)">>$(ABOUT_INI_PATH)
+	echo "title=$(APP_TITLE)">>$(ABOUT_INI_PATH)
 	echo "version=$(1)">>$(ABOUT_INI_PATH)
 	echo "homepage=$(2)">>$(ABOUT_INI_PATH)
 	echo "year=$(3)">>$(ABOUT_INI_PATH)

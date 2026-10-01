@@ -1,3 +1,11 @@
+# Ditherista Press
+
+**Ditherista Press** is a fork of [Ditherista](https://github.com/robertkist/ditherista) by Robert Kist, turned into a
+tool for preparing screen-printing films: physical print size, output DPI, LPI screens with per-ink angles, tone
+controls, CMYK/RGB and palette separation, lossless 1-bit film export, PSD with spot channels, presets.
+
+The upstream README follows.
+
 # Ditherista - A Ditherer for Windows, Linux and macOS
 
 <img src="https://user-images.githubusercontent.com/9162068/229359300-20052fc7-31a4-4fea-8aa5-7f03f83a1397.png" width="300" height="84">
