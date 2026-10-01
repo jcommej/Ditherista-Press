@@ -11,8 +11,8 @@
  * squares, like a dither cell.
  * - Auto: a ring - results are rendered as soon as a setting changes (upstream behaviour)
  * - Paused: two bars - settings change freely, the last result stays on screen
- * - Rendering: the pause glyph breathes, every square growing and shrinking a little out of step, while the one
- *   render runs; then the glyph turns back into the ring
+ * - Rendering: the glyph breathes, every square growing and shrinking a little out of step, while a render runs -
+ *   the ring for automatic renders, the bars for the one render asked while paused, which then turn into the ring
  * The button only shows the state and reports clicks; MainWindow decides what a click does (mainwindow_render.cpp).
  * It stays anchored to the lower right corner of `anchor` (the view's viewport), whatever its size. */
 class RenderGlyphButton final : public QWidget {
@@ -28,7 +28,9 @@ public:
 
     explicit RenderGlyphButton(QWidget* parent, QWidget* anchor);
     [[nodiscard]] State state() const { return current; }
-    void setState(State state);  // the glyph glides to the new state; Rendering -> Auto after one breath at least
+    // the glyph glides to the new state; Rendering keeps the glyph (ring or bars) and makes it breathe, for one breath
+    // at least
+    void setState(State state);
     [[nodiscard]] QSize sizeHint() const override { return {DIAMETER, DIAMETER}; }
 
     // one square of the matrix at `elapsedMs` of a render: scale of the cell (0.58..0.96) and opacity (0..1)
@@ -62,6 +64,28 @@ private:
     void reposition();
     void updateToolTip();
     [[nodiscard]] double now() const { return static_cast<double>(clock.elapsed()); }
+};
+
+/* The matrix breathes for as long as this lives: put one around any render, automatic or not. Then the button goes
+ * back to the state it had. Nested ones leave it to the outermost, and a null button is allowed. */
+class RenderGlyphActivity {
+public:
+    explicit RenderGlyphActivity(RenderGlyphButton* button)
+        : button(button), previous(button != nullptr ? button->state() : RenderGlyphButton::State::Rendering) {
+        if (previous != RenderGlyphButton::State::Rendering) {
+            button->setState(RenderGlyphButton::State::Rendering);
+        }
+    }
+    ~RenderGlyphActivity() {
+        if (previous != RenderGlyphButton::State::Rendering) {
+            button->setState(previous);
+        }
+    }
+    RenderGlyphActivity(const RenderGlyphActivity&) = delete;
+    RenderGlyphActivity& operator=(const RenderGlyphActivity&) = delete;
+private:
+    RenderGlyphButton* button;
+    RenderGlyphButton::State previous;
 };
 
 #endif // RENDERGLYPHBUTTON_H

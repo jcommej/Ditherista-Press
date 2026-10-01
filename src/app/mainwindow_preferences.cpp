@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "export/filmwriter.h"
 #include "export/psdwriter.h"
+#include "viewport/renderglyphbutton.h"
 #include <QActionGroup>
 #include <QClipboard>
 #include <QInputDialog>
@@ -342,6 +343,7 @@ void MainWindow::copyToClipboard() {
         channel = indices[static_cast<size_t>(items.indexOf(item))];
     }
     setMouseBusy(true);
+    const RenderGlyphActivity activity(renderButton);  // the render control breathes while the film is made
     if (renderDpi < screenGeometry.dpi) {
         notification->showText(tr("rendering the film at %1 DPI...").arg(screenGeometry.dpi, 0, 'f', 0), 60000);
         QApplication::processEvents();

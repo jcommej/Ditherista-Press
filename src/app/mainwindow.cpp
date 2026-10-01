@@ -6,6 +6,8 @@
 #include "ui_elements/signalblocker.h"
 #include "export/filmwriter.h"
 #include "export/psdwriter.h"
+#include "viewport/renderglyphbutton.h"
+#include <optional>
 
 #include <QClipboard>
 #include <QMimeData>
@@ -261,6 +263,16 @@ void MainWindow::reDither(const bool force) {
         renderDirty = true;
         return;
     }
+    // the render control breathes whenever something is computed - not when a cached result is only shown
+    const bool separating = current_dither_number >= COLOR_DITHER_START && separationActive();
+    const bool computes = force || (separating ? separationFilmsFor != current_dither_number
+                                    : current_dither_number < COLOR_DITHER_START
+                                        ? !imageHashMono.hasDitheredImage(current_dither_number)
+                                        : !imageHashColor.hasDitheredImage(current_dither_number));
+    std::optional<RenderGlyphActivity> activity;
+    if (computes) {
+        activity.emplace(renderButton);
+    }
     setMouseBusy(true);
     if(force) {
         if (current_dither_number < COLOR_DITHER_START) {
@@ -389,6 +401,7 @@ void MainWindow::saveFile(const QString &fileName) {
         return;
     }
     renderBeforeExport();  // render control paused with changes waiting: render them first
+    const RenderGlyphActivity activity(renderButton);  // the render control breathes while the film is made
     setMouseBusy(true);
     if (renderDpi < screenGeometry.dpi) {
         notification->showText(tr("rendering the film at %1 DPI...").arg(screenGeometry.dpi, 0, 'f', 0), 60000);

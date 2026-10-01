@@ -69,9 +69,11 @@ void RenderGlyphButton::breathing(const int x, const int y, const double elapsed
 void RenderGlyphButton::setState(const State state) {
     current = state;
     if (state == State::Rendering) {
-        shown = State::Rendering;
-        renderStart = now();
-        glideTo(&PAUSE_GLYPH);  // the bars breathe while the render runs
+        if (shown != State::Rendering) {  // renders in a row (a slider dragged) carry on the same breath
+            shown = State::Rendering;
+            renderStart = now();
+        }
+        // the glyph stays: the bars breathe for the render asked while paused, the ring for automatic renders
     } else if (state == State::Auto && shown == State::Rendering && now() - renderStart < MIN_RENDER_MS) {
         // a quick render: frame() turns the glyph back into the ring once the breath has been seen
     } else {

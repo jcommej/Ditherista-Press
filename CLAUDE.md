@@ -126,7 +126,7 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `mainwindow_palette_editor.cpp` | palette editing (`editPalette` = one undo step → custom palette), Edit > Undo/Redo Palette Change, colour picker session with live low-res preview |
 | `mainwindow.cpp` | `ditherMonoInto` / `ditherColorInto` (dither any cache: preview or film), `renderFilm`, `saveFile` |
 | `viewport/graphicsview.cpp` | hold click / Space to show the original, scene item replacement without leaks |
-| `viewport/renderglyphbutton.*` | render control button (QPainter, 7×7 glyph matrix: ring = Auto, bars = Paused, breathing while rendering), anchored to the viewport's lower right corner |
+| `viewport/renderglyphbutton.*` | render control button (QPainter, 7×7 glyph matrix: ring = Auto, bars = Paused, breathing during every render, automatic ones included: `RenderGlyphActivity` guard in `reDither` when something is computed, and in Save / Copy), anchored to the viewport's lower right corner |
 | `mainwindow_render.cpp` | render control: pause, held work (`renderDirty`, `sourceDirtyMono/Color`, `outputSizeDirty`), `renderPending` = one render, `requestOutputSize`, `renderBeforeExport` |
 
 `monoTarget` / `colorTarget` + `renderDpi` let the upstream ditherer functions render either the preview caches

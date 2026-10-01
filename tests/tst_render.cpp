@@ -71,6 +71,25 @@ private slots:
         QCOMPARE(button.focusPolicy(), Qt::NoFocus);  // Space stays with the view
     }
 
+    void activityBreathesThenGivesTheStateBack() {
+        QWidget parent;
+        QWidget anchor(&parent);
+        RenderGlyphButton button(&parent, &anchor);
+        for (const auto start : {RenderGlyphButton::State::Auto, RenderGlyphButton::State::Paused}) {
+            button.setState(start);
+            {
+                const RenderGlyphActivity outer(&button);  // an automatic render, or Save
+                QCOMPARE(button.state(), RenderGlyphButton::State::Rendering);
+                {
+                    const RenderGlyphActivity inner(&button);  // nested: leaves it to the outer one
+                }
+                QCOMPARE(button.state(), RenderGlyphButton::State::Rendering);
+            }
+            QCOMPARE(button.state(), start);
+        }
+        const RenderGlyphActivity none(nullptr);  // no button yet: nothing happens
+    }
+
     void clickInsideTheCircleOnly() {
         QWidget parent;
         parent.resize(300, 200);
