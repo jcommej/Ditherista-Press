@@ -160,8 +160,10 @@ or a short-lived full-resolution cache for export, without duplicating them.
 - **Preview mouse roles (decided by the user, changed once already): left or right drag = pan, Ctrl + left drag =
   export the file, Space = original, double-click = 100 %.** Preferences > Drag to Pan off gives upstream back
   (left hold = original, left drag = export). Navigation from plotterfun (`D:\Documents\plotterfun\plotterfun\ui.js`),
-  each switchable: smooth wheel zoom around the pointer (wheel up = in; stepped = upstream, wheel up = out), zoom
-  increment (default 10 %), middle-button joystick (hold, Esc stops), inertia, pinch. 1:1 = `screenPpi / renderDpi`
+  each switchable: three zoom modes - smooth (animated glide) around the pointer, stepped around the pointer (both
+  wheel up = in), stepped around the centre = upstream (wheel up = out); invert wheel; zoom increment (default
+  10 %); middle-button joystick (hold, Esc stops), inertia, pinch. "Wheel Changes Values Over Fields" off: the app
+  event filter (`MouseEventFilter`) hands wheel events over spin boxes, sliders and combos to the scroll area. 1:1 = `screenPpi / renderDpi`
   (the scene is at the preview DPI), screen PPI from Calibrate Screen or the system's. Zoom 2 %..1600 %.
 - **Colour management = working space + export** (user's choice): pictures converted from their embedded profile
   (untagged = sRGB) to the working profile (sRGB default: untagged/sRGB pictures untouched, bit for bit); colour
@@ -169,7 +171,8 @@ or a short-lived full-resolution cache for export, without duplicating them.
 - Preview Quality 100/75/50 % scales the preview DPI (`previewDpi`); export always full. View background: grey
   slider (default mid grey, marked) or graph paper white/black at the film's scale (`GraphicsView::drawBackground`).
 - Copy to Clipboard (File, and Edit > Copy): pixels + files in `%TEMP%/ditherista-clipboard` (PNG/TIFF/PSD with DPI
-  and profile); separate channels as one file per ink (or one PSD). File > Open Recent (5), Paste Image.
+  and profile); when separating with Clipboard = "ask", a small window picks the print, one ink's 1-bit film, or
+  every ink as files (or one PSD). File > Open Recent (5), Paste Image.
 - Save name = Filename Settings template (default `{name}{suffix}.{ext}`, suffix `_{dither}`); upstream proposed
   the algorithm name only.
 - Postponed by the user: dot shapes (maybe with other algorithms), histogram, dot cut-off / high-cut overlay.

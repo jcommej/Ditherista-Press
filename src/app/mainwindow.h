@@ -195,7 +195,10 @@ private:
     Preferences preferences;
     QString sourceFileName;       // picture file name without extension, for {name}; empty for a pasted picture
     PreferencesDialog* preferencesDialog = nullptr;
-    QAction* smoothZoomAction = nullptr;  // also set from the dialog's Zoom Mode
+    // Preferences menu entries also set from the Preferences window
+    std::vector<QAction*> zoomModeActions;
+    QAction* invertWheelAction = nullptr;
+    QAction* wheelOverFieldsAction = nullptr;
     QImage loadedImage;                   // the picture as read, with its own colour profile
     void setupPreferences();
     void setupFileMenu();                 // Open Recent, Paste Image, Copy to Clipboard

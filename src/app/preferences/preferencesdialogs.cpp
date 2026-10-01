@@ -242,14 +242,37 @@ PreferencesDialog::PreferencesDialog(Preferences* preferences, const FileNameFie
                               "rendered at full quality, whatever this setting.")));
 
     // Zoom
-    column->addWidget(sectionHeader(Section::Zoom, ":/resources/pref_zoom.svg", tr("Zoom")));
+    column->addWidget(sectionHeader(Section::Zoom, ":/resources/pref_zoom.svg", tr("Zoom and Mouse Wheel")));
     column->addWidget(label(tr("Zoom Mode")));
-    column->addWidget(choice<bool>(this, {{tr("Smooth, around the pointer (default)"), true},
-                                          {tr("Stepped, around the centre (upstream Ditherista)"), false}},
-                                   preferences->smoothZoom, [this, changedNow](const bool smooth) {
-        this->preferences->smoothZoom = smooth;
-        changedNow(Change::View);
-    }));
+    column->addWidget(choice<Preferences::ZoomMode>(
+        this, {{tr("Smooth, around the pointer (default)"), Preferences::ZoomMode::SmoothPointer},
+               {tr("Stepped, around the pointer"), Preferences::ZoomMode::SteppedPointer},
+               {tr("Stepped, around the centre (upstream Ditherista)"), Preferences::ZoomMode::SteppedCentre}},
+        preferences->zoomMode, [this, changedNow](const Preferences::ZoomMode mode) {
+            this->preferences->zoomMode = mode;
+            changedNow(Change::View);
+        }));
+    column->addWidget(hint(tr("Smooth glides to each new zoom; stepped jumps there. Around the pointer, the point "
+                              "under the mouse stays put and the wheel up zooms in; upstream zooms around the "
+                              "centre, the wheel up zooming out.")));
+    const auto toggle = [this, page, column, changedNow](const QString& text, bool Preferences::* field) {
+        QHBoxLayout* line = new QHBoxLayout();
+        ToggleSwitch* button = new ToggleSwitch(page);
+        button->setChecked(this->preferences->*field);
+        line->addWidget(label(text), 1);
+        line->addWidget(button);
+        column->addLayout(line);
+        connect(button, &QAbstractButton::toggled, this, [this, field, changedNow](const bool on) {
+            this->preferences->*field = on;
+            changedNow(Change::View);
+        });
+    };
+    toggle(tr("Invert Wheel Zoom"), &Preferences::invertWheel);
+    column->addWidget(hint(tr("The wheel zooms the other way round, in every zoom mode.")));
+    toggle(tr("Wheel Changes Values Over Fields"), &Preferences::wheelOverFields);
+    column->addWidget(hint(tr("On: the wheel over a number, slider or list changes its value, as usual. Off: it "
+                              "scrolls the settings instead, so a value never changes by accident while "
+                              "scrolling; click and type, or drag, to change it.")));
     column->addWidget(label(tr("Zoom Increment (%)")));
     QHBoxLayout* incrementLine = new QHBoxLayout();
     QSlider* increment = new QSlider(Qt::Horizontal, page);
@@ -303,7 +326,7 @@ PreferencesDialog::PreferencesDialog(Preferences* preferences, const FileNameFie
     column->addWidget(label(tr("Copy to Clipboard puts")));
     column->addWidget(choice<Preferences::ClipboardContent>(
         this, {{tr("The film as shown - composite, lossless (default)"), Preferences::ClipboardContent::Composite},
-               {tr("Separate channels - one file per ink, when separating"), Preferences::ClipboardContent::SeparateFiles}},
+               {tr("Ask which channel, when separating (one ink, the print, or every ink)"), Preferences::ClipboardContent::AskChannel}},
         preferences->clipboardContent, [this, changedNow](const Preferences::ClipboardContent content) {
             this->preferences->clipboardContent = content;
             changedNow(Change::Other);
@@ -317,8 +340,8 @@ PreferencesDialog::PreferencesDialog(Preferences* preferences, const FileNameFie
     column->addWidget(hint(tr("The copy is rendered at the output DPI, like Save. It goes on the clipboard twice: "
                               "as pixels, for programs that paste an image (the resolution is then set in the "
                               "program), and as files with the DPI and profile inside, for programs that paste "
-                              "files (Explorer, a folder, some layout programs). Separate channels copy one file "
-                              "per ink; the pixels are the simulated print.")));
+                              "files (Explorer, a folder, some layout programs). When separating, \"ask\" opens a "
+                              "small window to pick the simulated print, one ink's film, or every ink as files.")));
 
     // Filename Settings
     column->addWidget(sectionHeader(Section::FileNames, ":/resources/file.svg", tr("Filename Settings")));

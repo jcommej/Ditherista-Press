@@ -16,9 +16,14 @@ private:
 protected:
     /* methods */
     bool eventFilter(QObject* obj, QEvent* event) override;
+    bool wheelOverFields = true;
+    bool redirectWheel(QObject* obj, QEvent* event);
 public:
     void enableUi() { uiDisabled = false; };
     void disableUi() { uiDisabled = true; };
+    // Preferences: false = the wheel over a number box, slider or drop-down list no longer changes its value
+    // (a frequent accident while scrolling the settings); it scrolls the panel around it instead
+    void setWheelOverFields(const bool on) { wheelOverFields = on; }
 };
 
 #endif  // MOUSEEVENTFILTER_H

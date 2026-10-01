@@ -38,7 +38,12 @@ QImage toColorSpace(const QImage& image, const QColorSpace& target);
  */
 struct Preferences {
     // navigation
-    bool smoothZoom = true;
+    // wheel zoom: smooth (animated) around the pointer, by steps around the pointer, or by steps around the
+    // centre as upstream did (where the wheel up zooms out)
+    enum class ZoomMode { SmoothPointer, SteppedPointer, SteppedCentre };
+    ZoomMode zoomMode = ZoomMode::SmoothPointer;
+    bool invertWheel = false;      // the wheel zooms the other way round
+    bool wheelOverFields = true;   // false: the wheel over a number, slider or list field scrolls the panel instead
     bool dragPan = true;
     bool middleJoystick = true;
     bool inertia = true;
@@ -54,7 +59,8 @@ struct Preferences {
     QString workingProfile = "srgb";  // see workingProfiles()
     bool embedProfile = true;
     // clipboard: Copy to Clipboard puts the film as an image, plus files for programs that paste files
-    enum class ClipboardContent { Composite, SeparateFiles };
+    // when separating: copy the simulated print, or ask which channel (one ink, or every ink as files)
+    enum class ClipboardContent { Composite, AskChannel };
     ClipboardContent clipboardContent = ClipboardContent::Composite;
     QString clipboardFormat = "png";  // file format of the copied files: png, tif or psd
     // File > Open Recent

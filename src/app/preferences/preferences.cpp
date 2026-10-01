@@ -6,7 +6,11 @@
 
 void Preferences::load(QSettings& settings) {
     const Preferences defaults;
-    smoothZoom = settings.value("navigation/smoothZoom", defaults.smoothZoom).toBool();
+    // zoomMode replaced the earlier on/off smoothZoom: off meant upstream's steps around the centre
+    const int oldMode = settings.value("navigation/smoothZoom", true).toBool() ? 0 : 2;
+    zoomMode = static_cast<ZoomMode>(std::clamp(settings.value("navigation/zoomMode", oldMode).toInt(), 0, 2));
+    invertWheel = settings.value("navigation/invertWheel", defaults.invertWheel).toBool();
+    wheelOverFields = settings.value("navigation/wheelOverFields", defaults.wheelOverFields).toBool();
     dragPan = settings.value("navigation/dragPan", defaults.dragPan).toBool();
     middleJoystick = settings.value("navigation/middleJoystick", defaults.middleJoystick).toBool();
     inertia = settings.value("navigation/inertia", defaults.inertia).toBool();
@@ -35,7 +39,11 @@ void Preferences::load(QSettings& settings) {
 }
 
 void Preferences::save(QSettings& settings) const {
-    settings.setValue("navigation/smoothZoom", smoothZoom);
+    settings.setValue("navigation/zoomMode", static_cast<int>(zoomMode));
+    settings.setValue("navigation/invertWheel", invertWheel);
+    settings.setValue("navigation/wheelOverFields", wheelOverFields);
+    settings.remove("navigation/smoothZoom");
+    settings.remove("navigation/rightDragPan");  // before Drag to Pan
     settings.setValue("navigation/dragPan", dragPan);
     settings.setValue("navigation/middleJoystick", middleJoystick);
     settings.setValue("navigation/inertia", inertia);

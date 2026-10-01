@@ -4,6 +4,11 @@
 #include <QWheelEvent>
 #include "preferences/preferences.h"
 #include "viewport/graphicsview.h"
+#include "ui_elements/mouseeventfilter.h"
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QSpinBox>
+#include <QVBoxLayout>
 
 /* Tests for preferences/preferences.h (file names, storage) and the preview's navigation (viewport/graphicsview.h) */
 
@@ -55,7 +60,9 @@ private slots:
         QVERIFY(dir.isValid());
         const QString path = dir.filePath("preferences.ini");
         Preferences written;
-        written.smoothZoom = false;
+        written.zoomMode = Preferences::ZoomMode::SteppedPointer;
+        written.invertWheel = true;
+        written.wheelOverFields = false;
         written.inertia = false;
         written.screenPpi = 108.5;
         written.autoSuffix = false;
@@ -70,7 +77,9 @@ private slots:
         Preferences read;
         QSettings settings(path, QSettings::IniFormat);
         read.load(settings);
-        QCOMPARE(read.smoothZoom, false);
+        QCOMPARE(read.zoomMode, Preferences::ZoomMode::SteppedPointer);
+        QCOMPARE(read.invertWheel, true);
+        QCOMPARE(read.wheelOverFields, false);
         QCOMPARE(read.dragPan, true);
         QCOMPARE(read.inertia, false);
         QCOMPARE(read.screenPpi, 108.5);
@@ -91,7 +100,7 @@ private slots:
         written.previewQuality = 50;
         written.workingProfile = "adobergb";
         written.embedProfile = false;
-        written.clipboardContent = Preferences::ClipboardContent::SeparateFiles;
+        written.clipboardContent = Preferences::ClipboardContent::AskChannel;
         written.clipboardFormat = "tif";
         written.recentFiles = {"a.png", "b.png"};
         {
@@ -107,7 +116,7 @@ private slots:
         QCOMPARE(read.previewQuality, 50);
         QCOMPARE(read.workingProfile, QString("adobergb"));
         QCOMPARE(read.embedProfile, false);
-        QCOMPARE(read.clipboardContent, Preferences::ClipboardContent::SeparateFiles);
+        QCOMPARE(read.clipboardContent, Preferences::ClipboardContent::AskChannel);
         QCOMPARE(read.clipboardFormat, QString("tif"));
         QCOMPARE(read.recentFiles, QStringList({"a.png", "b.png"}));
     }
@@ -123,6 +132,18 @@ private slots:
         QCOMPARE(p.previewQuality, 100);
         QCOMPARE(p.clipboardFormat, QString("png"));
         QCOMPARE(p.zoomIncrement, 100);
+    }
+
+    void earlierSmoothZoomSettingIsKept() {
+        // a preferences file from before the three zoom modes: smooth zoom off meant upstream's steps
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath("old.ini"), QSettings::IniFormat);
+        settings.setValue("navigation/smoothZoom", false);
+        Preferences p;
+        p.load(settings);
+        QCOMPARE(p.zoomMode, Preferences::ZoomMode::SteppedCentre);
+        p.save(settings);
+        QVERIFY(!settings.contains("navigation/smoothZoom"));  // replaced by zoomMode
     }
 
     void recentFilesKeepTheLastFive() {
@@ -171,9 +192,11 @@ private slots:
         QTemporaryDir dir;
         QSettings settings(dir.filePath("none.ini"), QSettings::IniFormat);
         Preferences p;
-        p.smoothZoom = false;
+        p.zoomMode = Preferences::ZoomMode::SteppedCentre;
         p.load(settings);
-        QCOMPARE(p.smoothZoom, true);
+        QCOMPARE(p.zoomMode, Preferences::ZoomMode::SmoothPointer);
+        QCOMPARE(p.wheelOverFields, true);
+        QCOMPARE(p.invertWheel, false);
         QCOMPARE(p.screenPpi, 0.0);
         QCOMPARE(p.nameTemplate, QString("{name}{suffix}.{ext}"));
     }
@@ -209,7 +232,8 @@ private slots:
         QWheelEvent up(at, view.viewport()->mapToGlobal(at), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
                        Qt::NoScrollPhase, false);
         QApplication::sendEvent(view.viewport(), &up);
-        QVERIFY(std::abs(view.zoomFactor() - 1.1) < 1e-9);  // wheel up zooms in by one notch: +10 % by default
+        QVERIFY(view.zoomFactor() < 1.1);  // smooth: it glides there rather than jumping
+        QTRY_VERIFY_WITH_TIMEOUT(std::abs(view.zoomFactor() - 1.1) < 1e-9, 1000);  // wheel up: +10 % by default
         const QPointF after = view.mapToScene(at.toPoint());
         QVERIFY(std::abs(after.x() - before.x()) < 1.0 && std::abs(after.y() - before.y()) < 1.0);
     }
@@ -217,13 +241,45 @@ private slots:
     void stepWheelWhenSmoothZoomIsOff() {
         GraphicsView view;
         GraphicsView::Navigation navigation;
-        navigation.smoothZoom = false;
+        navigation.zoomMode = GraphicsView::ZoomMode::SteppedCentre;
         view.setNavigation(navigation);
         view.resetScene(200, 200);
         QWheelEvent up(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
                        Qt::NoScrollPhase, false);
         QApplication::sendEvent(view.viewport(), &up);
         QCOMPARE(view.getZoomLevel(), 90);  // upstream: wheel up zooms out by 10 %
+    }
+
+    void steppedAroundThePointer() {
+        GraphicsView view;
+        GraphicsView::Navigation navigation;
+        navigation.zoomMode = GraphicsView::ZoomMode::SteppedPointer;
+        view.setNavigation(navigation);
+        view.resize(400, 300);
+        view.resetScene(2000, 1500);
+        view.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&view));
+        const QPointF at(300.0, 60.0);
+        const QPointF before = view.mapToScene(at.toPoint());
+        QWheelEvent up(at, view.viewport()->mapToGlobal(at), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
+                       Qt::NoScrollPhase, false);
+        QApplication::sendEvent(view.viewport(), &up);
+        QCOMPARE(view.getZoomLevel(), 110);  // at once, one step, wheel up = in
+        const QPointF after = view.mapToScene(at.toPoint());
+        QVERIFY(std::abs(after.x() - before.x()) < 1.0 && std::abs(after.y() - before.y()) < 1.0);
+    }
+
+    void invertedWheel() {
+        GraphicsView view;
+        GraphicsView::Navigation navigation;
+        navigation.zoomMode = GraphicsView::ZoomMode::SteppedPointer;
+        navigation.invertWheel = true;
+        view.setNavigation(navigation);
+        view.resetScene(200, 200);
+        QWheelEvent up(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
+                       Qt::NoScrollPhase, false);
+        QApplication::sendEvent(view.viewport(), &up);
+        QCOMPARE(view.getZoomLevel(), 90);  // wheel up now zooms out
     }
 
     void zoomIsLimited() {
@@ -251,6 +307,43 @@ private slots:
     }
 };
 
+/* Preferences > Wheel Changes Values Over Fields (ui_elements/mouseeventfilter.cpp) */
+class TestWheelOverFields : public QObject {
+    Q_OBJECT
+private slots:
+    void wheelScrollsThePanelInsteadOfTheValue() {
+        QScrollArea area;
+        area.resize(200, 150);
+        QWidget* panel = new QWidget();
+        QVBoxLayout* column = new QVBoxLayout(panel);
+        QSpinBox* spin = new QSpinBox(panel);
+        spin->setRange(0, 100);
+        spin->setValue(50);
+        column->addWidget(spin);
+        column->addSpacing(1000);  // something to scroll
+        area.setWidget(panel);
+        area.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&area));
+        MouseEventFilter filter;
+        QApplication::instance()->installEventFilter(&filter);
+        const auto wheelOver = [spin]() {
+            const QPointF at(5, 5);
+            QWheelEvent down(at, spin->mapToGlobal(at), QPoint(), QPoint(0, -120), Qt::NoButton, Qt::NoModifier,
+                             Qt::NoScrollPhase, false);
+            QApplication::sendEvent(spin, &down);
+        };
+        wheelOver();
+        QCOMPARE(spin->value(), 49);  // on, as usual: the value changes
+        QCOMPARE(area.verticalScrollBar()->value(), 0);
+        filter.setWheelOverFields(false);
+        wheelOver();
+        QCOMPARE(spin->value(), 49);  // off: the value stays
+        QVERIFY(area.verticalScrollBar()->value() > 0);  // and the panel scrolls
+        QApplication::instance()->removeEventFilter(&filter);
+    }
+};
+
 QObject* newTestPreferences() { return new TestPreferences; }
+QObject* newTestWheelOverFields() { return new TestWheelOverFields; }
 QObject* newTestNavigation() { return new TestNavigation; }
 #include "tst_preferences.moc"

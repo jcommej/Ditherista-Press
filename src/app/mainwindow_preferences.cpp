@@ -1,7 +1,9 @@
 #include "mainwindow.h"
 #include "export/filmwriter.h"
 #include "export/psdwriter.h"
+#include <QActionGroup>
 #include <QClipboard>
+#include <QInputDialog>
 #include <QDir>
 #include <QMimeData>
 #include <QScreen>
@@ -46,9 +48,31 @@ void MainWindow::setupPreferences() {
     };
     menu->setToolTipsVisible(true);
     menu->addSection(tr("Navigation"))->setEnabled(false);
-    smoothZoomAction = option(tr("Smooth Zoom Around the Pointer"),
-                              tr("The wheel zooms continuously around the point under the pointer.\n"
-                                 "Off: steps around the centre, as in upstream Ditherista."), &Preferences::smoothZoom);
+    // zoom mode: three choices, one checked
+    QMenu* zoomModes = menu->addMenu(tr("Zoom Mode"));
+    QActionGroup* zoomGroup = new QActionGroup(zoomModes);
+    for (const auto& [text, mode] : std::vector<std::pair<QString, Preferences::ZoomMode>>{
+             {tr("Smooth, Around the Pointer"), Preferences::ZoomMode::SmoothPointer},
+             {tr("Stepped, Around the Pointer"), Preferences::ZoomMode::SteppedPointer},
+             {tr("Stepped, Around the Centre (upstream Ditherista)"), Preferences::ZoomMode::SteppedCentre}}) {
+        QAction* action = zoomModes->addAction(text);
+        action->setCheckable(true);
+        action->setActionGroup(zoomGroup);
+        action->setData(static_cast<int>(mode));
+        zoomModeActions.push_back(action);
+        const Preferences::ZoomMode chosen = mode;
+        connect(action, &QAction::triggered, this, [this, chosen]() {
+            preferences.zoomMode = chosen;
+            applyNavigation();
+            savePreferences();
+        });
+    }
+    invertWheelAction = option(tr("Invert Wheel Zoom"), tr("The wheel zooms the other way round, in every zoom mode."),
+                               &Preferences::invertWheel);
+    wheelOverFieldsAction = option(tr("Wheel Changes Values Over Fields"),
+                                   tr("On: the wheel over a number, slider or list changes its value, as usual.\n"
+                                      "Off: it scrolls the settings instead, so a value never changes by accident "
+                                      "while scrolling."), &Preferences::wheelOverFields);
     option(tr("Drag to Pan"),
            tr("Drag with the left or the right button to move the picture.\nCtrl + drag exports the film as a file, "
               "Space shows the original.\nOff: hold the left button for the original, drag to export, as in "
@@ -77,7 +101,7 @@ void MainWindow::setupPreferences() {
     using Section = PreferencesDialog::Section;
     for (const auto& [text, section] : std::vector<std::pair<QString, Section>>{
              {tr("Color Management..."), Section::ColorManagement}, {tr("Preview Quality..."), Section::PreviewQuality},
-             {tr("Zoom..."), Section::Zoom}, {tr("Background..."), Section::Background},
+             {tr("Zoom and Mouse Wheel..."), Section::Zoom}, {tr("Background..."), Section::Background},
              {tr("Clipboard..."), Section::Clipboard}, {tr("Filename Settings..."), Section::FileNames},
              {tr("Default Folders..."), Section::Folders}}) {
         const Section which = section;
@@ -116,7 +140,8 @@ void MainWindow::savePreferences() {
 
 void MainWindow::applyNavigation() {
     GraphicsView::Navigation navigation;
-    navigation.smoothZoom = preferences.smoothZoom;
+    navigation.zoomMode = static_cast<GraphicsView::ZoomMode>(preferences.zoomMode);
+    navigation.invertWheel = preferences.invertWheel;
     navigation.dragPan = preferences.dragPan;
     navigation.middleJoystick = preferences.middleJoystick;
     navigation.inertia = preferences.inertia;
@@ -124,9 +149,18 @@ void MainWindow::applyNavigation() {
     navigation.zoomIncrement = preferences.zoomIncrement;
     ui->graphicsView->setNavigation(navigation);
     ui->graphicsView->setBackground(static_cast<GraphicsView::Background>(preferences.background), preferences.backgroundGrey);
-    if (smoothZoomAction != nullptr && smoothZoomAction->isChecked() != preferences.smoothZoom) {
-        const QSignalBlocker blocker(smoothZoomAction);
-        smoothZoomAction->setChecked(preferences.smoothZoom);
+    eventFilter.setWheelOverFields(preferences.wheelOverFields);
+    // the menu follows changes made in the Preferences window
+    for (QAction* action : zoomModeActions) {
+        const QSignalBlocker blocker(action);
+        action->setChecked(action->data().toInt() == static_cast<int>(preferences.zoomMode));
+    }
+    for (const auto& [action, value] : {std::pair{invertWheelAction, preferences.invertWheel},
+                                        std::pair{wheelOverFieldsAction, preferences.wheelOverFields}}) {
+        if (action != nullptr) {
+            const QSignalBlocker blocker(action);
+            action->setChecked(value);
+        }
     }
 }
 
@@ -282,6 +316,30 @@ void MainWindow::copyToClipboard() {
     if (firstLoad || isDithering) {
         return;
     }
+    // separating, with Preferences > Clipboard on "ask": which channel - the print, one ink, or every ink
+    enum { Print = -1, Every = -2 };
+    int channel = Print;
+    if (separationActive() && preferences.clipboardContent == Preferences::ClipboardContent::AskChannel) {
+        const std::vector<InkChannel> inks = separationInks();
+        const std::vector<ChannelSettings>& settings = currentChannelSettings();
+        QStringList items{tr("Simulated print (composite)")};
+        std::vector<int> indices{Print};
+        for (size_t i = 0; i < inks.size() && i < settings.size(); i++) {
+            if (settings[i].enabled) {
+                items << tr("%1 film").arg(inks[i].name);
+                indices.push_back(static_cast<int>(i));
+            }
+        }
+        items << tr("Every ink, as files (one per ink, or one PSD)");
+        indices.push_back(Every);
+        bool chosen = false;
+        const QString item = QInputDialog::getItem(this, tr("Copy to Clipboard"), tr("Channel to copy:"), items, 0,
+                                                   false, &chosen);
+        if (!chosen) {
+            return;
+        }
+        channel = indices[static_cast<size_t>(items.indexOf(item))];
+    }
     setMouseBusy(true);
     if (renderDpi < screenGeometry.dpi) {
         notification->showText(tr("rendering the film at %1 DPI...").arg(screenGeometry.dpi, 0, 'f', 0), 60000);
@@ -303,9 +361,19 @@ void MainWindow::copyToClipboard() {
     bool ok = true;
     if (separationActive()) {
         const std::vector<QImage> films = separationFilmsAtOutput();
-        pixels = withProfile(toFilmImage(separationView(films)));
-        if (preferences.clipboardContent == Preferences::ClipboardContent::SeparateFiles) {
-            const std::vector<InkChannel> inks = separationInks();
+        const std::vector<InkChannel> inks = separationInks();
+        if (channel >= 0 && static_cast<size_t>(channel) < films.size() && !films[static_cast<size_t>(channel)].isNull()) {
+            // one ink: its black and white film, as pixels and as a file
+            pixels = toFilmImage(films[static_cast<size_t>(channel)]);
+            const QString path = folder.filePath(QString("%1_%2.%3").arg(base, inks[static_cast<size_t>(channel)].name, format));
+            ok = write(path, pixels, &error);
+            files << QUrl::fromLocalFile(path);
+        } else if (channel == Print && preferences.clipboardContent == Preferences::ClipboardContent::Composite) {
+            pixels = withProfile(toFilmImage(separationView(films)));  // what the View selector shows
+        } else {
+            pixels = withProfile(toFilmImage(compositeFromFilms(films, inks, separationMode == SeparationMode::RGB)));
+        }
+        if (channel == Every) {
             if (format == "psd") {  // one document holding every ink, as Save writes it
                 const QString path = folder.filePath(base + ".psd");
                 std::vector<PsdSpotChannel> spots;

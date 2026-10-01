@@ -36,6 +36,8 @@ GraphicsView::GraphicsView(QWidget* parent) : QGraphicsView(parent) {
     viewport()->grabGesture(Qt::PinchGesture);
     motionTimer.setInterval(16);  // about 60 frames a second
     connect(&motionTimer, &QTimer::timeout, this, &GraphicsView::motionFrame);
+    zoomTimer.setInterval(16);
+    connect(&zoomTimer, &QTimer::timeout, this, &GraphicsView::zoomFrame);
     restCursor();
 }
 
@@ -98,7 +100,12 @@ void GraphicsView::drawBackground(QPainter* painter, const QRectF& rect) {
     painter->restore();
 }
 
-void GraphicsView::setZoomFactor(double factor, const bool update, const QPointF* anchor) {
+void GraphicsView::setZoomFactor(const double factor, const bool update, const QPointF* anchor) {
+    zoomTimer.stop();  // a zoom asked for (1:1, Fit, a number...) ends a smooth zoom still gliding
+    applyZoom(factor, update, anchor);
+}
+
+void GraphicsView::applyZoom(double factor, const bool update, const QPointF* anchor) {
     factor = std::clamp(factor, MIN_ZOOM / 100.0, MAX_ZOOM / 100.0);
     const QPointF scenePoint = anchor != nullptr ? mapToScene(anchor->toPoint()) : QPointF();
     zoom = factor;
@@ -116,6 +123,7 @@ void GraphicsView::zoomToFit() {
     if (sceneRect().isEmpty()) {
         return;
     }
+    zoomTimer.stop();
     fitInView(sceneRect(), Qt::KeepAspectRatio);
     setZoomFactor(transform().m11(), true);
     centerOn(sceneRect().center());
@@ -479,25 +487,57 @@ void GraphicsView::mouseDoubleClickEvent(QMouseEvent* event) {
 void GraphicsView::wheelEvent(QWheelEvent* event) {
     /* zoom in / out when user uses mouse wheel */
     setFocus();
-    if (navigation.smoothZoom) {
-        // continuous, around the point under the pointer; wheel up zooms in
-        const double notches = event->angleDelta().y() / 120.0;
-        if (notches != 0.0) {
-            const QPointF at = event->position();
-            setZoomFactor(zoom * std::pow(1.0 + navigation.zoomIncrement / 100.0, notches), true, &at);
-        }
-        event->accept();
+    event->accept();
+    double notches = event->angleDelta().y() / 120.0;  // touchpads send fractions of a notch
+    if (notches == 0.0) {
         return;
     }
-    if (event->angleDelta().y() > 0 && zoomLevel > MIN_ZOOM) {
-        zoomLevel -= navigation.zoomIncrement;
-        setZoomLevel(zoomLevel, true);
-    } else if (event->angleDelta().y() < 0 && zoomLevel < MAX_ZOOM) {
-        zoomLevel += navigation.zoomIncrement;
-        setZoomLevel(zoomLevel, true);
+    if (navigation.invertWheel) {
+        notches = -notches;
     }
-    event->accept();
-};
+    const QPointF at = event->position();
+    switch (navigation.zoomMode) {
+        case ZoomMode::SmoothPointer: {
+            // the target moves by one increment per notch; the zoom glides to it (zoomFrame)
+            const double from = zoomTimer.isActive() ? zoomTarget : zoom;
+            zoomTarget = std::clamp(from * std::pow(1.0 + navigation.zoomIncrement / 100.0, notches),
+                                    MIN_ZOOM / 100.0, MAX_ZOOM / 100.0);
+            zoomAnchor = at;
+            if (!zoomTimer.isActive()) {
+                zoomClock.start();
+                zoomTimer.start();
+            }
+        } break;
+        case ZoomMode::SteppedPointer: {
+            // one increment per notch, wheel up zooms in, the point under the pointer stays put
+            const int steps = notches > 0 ? std::max(1, static_cast<int>(std::lround(notches)))
+                                          : std::min(-1, static_cast<int>(std::lround(notches)));
+            setZoomFactor((zoomLevel + steps * navigation.zoomIncrement) / 100.0, true, &at);
+        } break;
+        case ZoomMode::SteppedCentre:
+            // upstream: around the centre, wheel up zooms out
+            if (notches > 0 && zoomLevel > MIN_ZOOM) {
+                setZoomLevel(std::max(MIN_ZOOM, zoomLevel - navigation.zoomIncrement), true);
+            } else if (notches < 0 && zoomLevel < MAX_ZOOM) {
+                setZoomLevel(std::min(MAX_ZOOM, zoomLevel + navigation.zoomIncrement), true);
+            }
+            break;
+    }
+}
+
+void GraphicsView::zoomFrame() {
+    /* one frame of the smooth zoom: closes most of the gap to the target in about 0.1 s, in log scale so zooming in
+     * and out feel the same */
+    const double dt = std::clamp(zoomClock.restart() / 1000.0, 0.0, 0.1);
+    const double gap = std::log(zoomTarget / zoom);
+    if (std::abs(gap) < 0.002) {
+        zoomTimer.stop();
+        applyZoom(zoomTarget, true, &zoomAnchor);
+        return;
+    }
+    const double step = gap * (1.0 - std::exp(-dt / 0.045));
+    applyZoom(zoom * std::exp(step), true, &zoomAnchor);
+}
 
 int GraphicsView::getZoomLevel() {
     /* returns the current zoom level */

@@ -47,16 +47,19 @@ public:
     void setZoomLevel(int level, bool update);
 
     /* Navigation (Preferences menu). Each can be turned off, giving back upstream's behaviour:
-     * - smoothZoom: the wheel zooms continuously around the point under the pointer (upstream: steps of 10 %
-     *   around the centre, wheel up zooming out)
+     * - zoomMode: smooth - the wheel zooms continuously (animated) around the point under the pointer; stepped
+     *   around the pointer; or stepped around the centre as upstream did, where the wheel up zooms out
+     * - invertWheel: the wheel zooms the other way round, whatever the mode
      * - dragPan: drag with the left or the right button to move the picture; Ctrl + left drag exports the film
      *   as a file, Space shows the original (upstream: hold the left button for the original, drag to export)
      * - middleJoystick: click the middle button and move away from that point: the view glides that way, faster
      *   the further the pointer is; release (or Esc) to stop
      * - inertia: after a pan or a joystick glide the view carries on and slows down
      * - pinchZoom: pinch on a touch screen or a touchpad */
+    enum class ZoomMode { SmoothPointer, SteppedPointer, SteppedCentre };  // same order as Preferences::ZoomMode
     struct Navigation {
-        bool smoothZoom = true;
+        ZoomMode zoomMode = ZoomMode::SmoothPointer;
+        bool invertWheel = false;
         bool dragPan = true;
         bool middleJoystick = true;
         bool inertia = true;
@@ -102,6 +105,13 @@ private:
     QTimer motionTimer;         // one frame of joystick or inertia motion
     QElapsedTimer frameClock;
     QPointF scrollRemainder;    // sub-pixel scrolling carried over to the next frame
+    // smooth zoom: the zoom glides towards its target, the point under the pointer staying put
+    double zoomTarget = 1.0;
+    QPointF zoomAnchor;
+    QTimer zoomTimer;
+    QElapsedTimer zoomClock;
+    void zoomFrame();
+    void applyZoom(double factor, bool update, const QPointF* anchor);  // setZoomFactor without ending the glide
     void scrollBy(const QPointF& delta);
     void motionFrame();
     void stopMotion();
