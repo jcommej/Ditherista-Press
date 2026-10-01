@@ -66,6 +66,13 @@ Everything compiles with **`-Werror`**: a warning fails the build.
 - **`GraphicsView` has a private member called `scene`** that hides `QGraphicsView::scene()`; go through the base.
 - **Ordered dithers put one dark pixel in 64 on pure white** (smallest Bayer threshold lands exactly on 0.5).
   Separated films are cleaned (`cleanExtremes`); the composite keeps upstream behaviour for now.
+- **PowerShell and the build**: `build.ps1` runs with `$ErrorActionPreference = "Stop"`, so `2>&1`, `*>` or
+  `2>$null` on it turn make's stderr warnings into a failure; pipe stdout only (`| Select-String "error:"`,
+  `| Out-Null`). With `make` directly, `2>$null` hides the compile errors: use `2>&1 | Select-String " error"`.
+  `Set-Content -Encoding utf8` writes a BOM (it broke a harness inserted into `main.cpp`): write bytes, or use
+  `[IO.File]::WriteAllText(path, text, (New-Object Text.UTF8Encoding($false)))`.
+- **`TestNavigation::smoothWheelZoomsInAroundThePointer` is timing-sensitive**: it failed once in a full run and
+  passed 3 times out of 3 on rerun. Rerun before suspecting a change.
 
 ### Testing the real app without touching the user's keyboard
 Add a temporary harness to `main.cpp` (a `QTimer` chain that finds widgets with `findChildren`, emits
@@ -73,7 +80,17 @@ Add a temporary harness to `main.cpp` (a `QTimer` chain that finds widgets with 
 `loadPresetNamed`; make `saveFile` a slot temporarily), run the app with a picture argument, `w.grab()` to PNG,
 then **remove the harness before committing** (`grep HARNESS` must find nothing). For crashes, build a copy with
 `qmake CONFIG+=release CONFIG+=force_debug_info` in a separate folder and run it under
-`C:\Qt\Tools\mingw1310_64\bin\gdb.exe -batch -ex run -ex bt`. Independent PSD check: `psd-tools` in a venv.
+`C:\Qt\Tools\mingw1310_64\bin\gdb.exe -batch -ex run -ex bt`. Independent PSD check: `psd-tools` in a venv
+(`python -m venv psdenv` then `pip install psd-tools numpy`; `psd.composite(force=True)` composes the layers,
+`psd.topil()` gives the document's own image).
+How it was done in the 2026-10-01/02 sessions, without ever touching the user's running instance or `dist`:
+keep the harness text in a scratch file and insert it in `main.cpp` with a byte-level script (CRLF kept), add
+`Q_INVOKABLE` to `saveFile` the same way, run `make app_build` (compiles, does not install), copy
+`build\release\application.exe` into a scratch copy of `dist\ditherista` and run it there, then put the sources
+back and check `git status`. The harness writes to the user's `%APPDATA%\ditherista\preferences.ini` (favourites,
+recent files): back it up before and restore it after. A copy started without a picture never quits: stop it
+by its path. Then `build.ps1` again so `dist` holds the clean build (compare its hash with
+`build\release\application.exe`, and look for no `HARNESS_OUT` string in it).
 
 ## 4. Architecture
 
@@ -267,7 +284,33 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | — Global undo / redo, stopping a render | to test (`feature/undo-stop`, from `feature/favorite-ditherers`) |
 | — Palette themes; custom palette question, themes on custom, colour order, overprint / superposed print | to test (`feature/palette-presets`, from `feature/undo-stop`) |
 
-### Next objectives (as of 2026-10-01)
+### Done in the 2026-10-01/02 sessions (branches stacked, none merged or pushed yet)
+
+`feature/rename-press` -> `feature/render-pause` -> `feature/favorite-ditherers` -> `feature/undo-stop` ->
+`feature/palette-presets`, each from the previous one. The user tested along the way; merge them in this order
+into `feature/screenprinting-workflow` (`--no-ff`) and push once they say so ("valide").
+- Rename to Ditherista Press (display name only).
+- Render control: pause / render once, breathing during every render, stop with the button or Esc.
+- Favourite ditherers (diamond star, copies on top); pixel padlock, reset cross, status dot.
+- Undo / redo of every setting (Ctrl+Z / Ctrl+Y), one history per picture.
+- Palette themes (reduced and custom pages), "Don't ask again" for the custom palette question.
+- Palette order by drag and drop (numbered rows) = order of films, files, PSD and print passes; Overprint and
+  Opacity per palette ink; print views side by side / superposed; spectral Kubelka-Munk simulator; PSD layers
+  that follow the print view (progressive proof when superposed); PSD layouts in Save As; Save "Separate
+  channels + simulated print".
+
+To check with the user: the two new Save options were only exercised in the harness through `saveFile`, not
+through the Save As dialog itself; the animation of the padlock and of the status dot was never captured mid-way.
+
+### Next objectives (as of 2026-10-02)
+
+Proposed, not decided yet (from this session):
+- **Paper / garment colour for the superposed print** (white only now): kraft paper, a dark t-shirt, and with it
+  the white underbase. The simulator takes any paper spectrum already (`InkSimulation::print(..., paper)`).
+- The **CMYK simulated print** still multiplies inks; it could use the same Kubelka-Munk simulator.
+- **Near-duplicate colours** from "Include brightest / darkest": Filtre gave #FFFFFF (paper, off) and #FEFEFE (an
+  ink): offer to merge colours closer than a threshold.
+- The render input gate drops clicks made during a render (they used to be replayed after it); fine so far.
 
 To check in real use (could not be tested here): pinch to zoom on a real touchpad / touch screen; the feel of the
 joystick and inertia (constants at the top of `viewport/graphicsview.cpp`); pasting a Copy to Clipboard into
