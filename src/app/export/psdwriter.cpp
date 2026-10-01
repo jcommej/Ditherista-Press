@@ -264,7 +264,22 @@ bool writePsd(const QString& path, const QImage& composite, const std::vector<Ps
         layers.push_back({additive ? QObject::tr("Garment") : QObject::tr("Paper"), "norm", {-1, 0, 1, 2},
                           {compressPlane(w, h, constant(w, 255)), compressPlane(w, h, constant(w, background)),
                            compressPlane(w, h, constant(w, background)), compressPlane(w, h, constant(w, background))}});
+        std::vector<QImage> pixels(inks.size());  // layers with their own pixels, kept alive while written
         for (size_t i = 0; i < inks.size(); i++) {
+            if (!inks[i].layer.isNull()) {
+                pixels[i] = inks[i].layer.convertToFormat(QImage::Format_ARGB32);
+                const QImage& image = pixels[i];
+                const auto channel = [&image](const int shift) {
+                    return RowSource([&image, shift](const int y, uint8_t* row) {
+                        const QRgb* src = reinterpret_cast<const QRgb*>(image.constScanLine(y));
+                        for (int x = 0; x < image.width(); x++) row[x] = static_cast<uint8_t>((src[x] >> shift) & 0xFF);
+                    });
+                };
+                layers.push_back({inks[i].name, "norm", {-1, 0, 1, 2},
+                                  {compressPlane(w, h, channel(24)), compressPlane(w, h, channel(16)),
+                                   compressPlane(w, h, channel(8)), compressPlane(w, h, channel(0))}});
+                continue;
+            }
             const QImage& film = films[i];
             const RowSource alpha = [&film](const int y, uint8_t* row) {  // opaque where the film has ink
                 const uchar* src = film.constScanLine(y);

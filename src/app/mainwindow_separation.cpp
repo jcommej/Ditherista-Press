@@ -151,6 +151,12 @@ void MainWindow::separationModeChangedSlot(int) {
 void MainWindow::separationViewChangedSlot(const int view) {
     if (separationMode == SeparationMode::Palette && view >= 0 && view < separationFilmOffset()) {
         printSuperposed = view == 1;  // the print Save and Copy write
+        const std::vector<ChannelSettings>& inks = currentChannelSettings();
+        if (printSuperposed && std::none_of(inks.begin(), inks.end(), [](const ChannelSettings& ink) {
+                return ink.enabled && ink.overprint; })) {
+            notification->showText(tr("Superposed: palette inks only overlap where one is set to Overprint\n"
+                                      "(ink table) - without it every pixel gets a single ink"), 5000);
+        }
     }
     if (!firstLoad && separationActive()) {
         if (renderPaused) {
@@ -239,18 +245,27 @@ QImage MainWindow::separationPrint(const std::vector<QImage>& films) const {
     /* the simulated print: palette inks side by side or superposed (the last chosen view), CMYK multiplied on
      * white, RGB added on black */
     if (separationMode == SeparationMode::Palette) {
-        if (!printSuperposed) {
-            return sideBySidePrint(films, separationInks());
-        }
-        std::vector<double> opacity;
-        if (const auto inks = channelSettings.find(static_cast<int>(SeparationMode::Palette)); inks != channelSettings.end()) {
-            for (const ChannelSettings& ink : inks->second) {
-                opacity.push_back(ink.opacity);
-            }
-        }
-        return superposedPrint(films, separationInks(), opacity);
+        return printSuperposed ? superposedPrint(films, separationInks(), paletteOpacities())
+                               : sideBySidePrint(films, separationInks());
     }
     return compositeFromFilms(films, separationInks(), separationMode == SeparationMode::RGB);
+}
+
+std::vector<double> MainWindow::paletteOpacities() const {
+    std::vector<double> opacity;
+    if (const auto inks = channelSettings.find(static_cast<int>(SeparationMode::Palette)); inks != channelSettings.end()) {
+        for (const ChannelSettings& ink : inks->second) {
+            opacity.push_back(ink.opacity);
+        }
+    }
+    return opacity;
+}
+
+std::vector<QImage> MainWindow::separationLayers(const std::vector<QImage>& films) const {
+    if (separationMode != SeparationMode::Palette) {
+        return {};
+    }
+    return printLayers(films, separationInks(), paletteOpacities(), printSuperposed);
 }
 
 QImage MainWindow::separationView(const std::vector<QImage>& films) const {
@@ -314,9 +329,10 @@ bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* wr
     const bool additive = separationMode == SeparationMode::RGB;
     if (suffix == "psd") {  // one document: the print (or white) plus every ink as a spot channel
         std::vector<PsdSpotChannel> spots;
+        const std::vector<QImage> layers = separationLayers(films);  // palette inks: as the print view shows them
         for (size_t i = 0; i < films.size(); i++) {
             if (!films[i].isNull()) {
-                spots.push_back({channels[i].name, channels[i].ink, films[i]});
+                spots.push_back({channels[i].name, channels[i].ink, films[i], i < layers.size() ? layers[i] : QImage()});
             }
         }
         // the layout picked in the Save As dialog, else the one of the Separation panel

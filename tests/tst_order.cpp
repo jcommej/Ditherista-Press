@@ -81,6 +81,31 @@ private slots:
         QVERIFY(qGreen(redOnTop) < 60);       // red over yellow: mostly red
     }
 
+    void printLayersStackToThePrint() {
+        const std::vector<InkChannel> inks = {{"01", qRgb(255, 220, 0)}, {"02", qRgb(200, 30, 30)}};
+        const std::vector<QImage> films = {film("##."), film(".##")};  // overlap in the middle pixel
+        const std::vector<double> opacity = {0.3, 0.3};
+        const std::vector<QImage> superposed = printLayers(films, inks, opacity, true);
+        QCOMPARE(superposed.size(), size_t(2));
+        // pass 1: its own colour where it prints, transparent elsewhere
+        QCOMPARE(qAlpha(superposed[0].pixel(2, 0)), 0);
+        QVERIFY(std::abs(qGreen(superposed[0].pixel(1, 0)) - 220) <= 1);
+        // pass 2: where it overlaps, the colour of the superposed print; elsewhere the ink alone
+        const QImage print = superposedPrint(films, inks, opacity);
+        QCOMPARE(superposed[1].pixel(1, 0), print.pixel(1, 0) | 0xFF000000u);
+        QVERIFY(superposed[1].pixel(1, 0) != superposed[0].pixel(1, 0));  // the overlap shows both inks
+        QCOMPARE(qAlpha(superposed[1].pixel(0, 0)), 0);
+        // the layers stacked (Normal blend: the top opaque pixel) give the superposed print everywhere
+        for (int x = 0; x < 3; x++) {
+            const QRgb top = qAlpha(superposed[1].pixel(x, 0)) ? superposed[1].pixel(x, 0) : superposed[0].pixel(x, 0);
+            QCOMPARE(top | 0xFF000000u, print.pixel(x, 0) | 0xFF000000u);
+        }
+        // side by side: flat ink colours
+        const std::vector<QImage> flat = printLayers(films, inks, opacity, false);
+        QCOMPARE(flat[1].pixel(1, 0), inks[1].ink | 0xFF000000u);
+        QCOMPARE(flat[0].pixel(1, 0), inks[0].ink | 0xFF000000u);
+    }
+
     void paletteOrderDoesNotChangeTheDither() {
         // the same colours in two orders: the colour ditherer gives the same picture (it looks for the nearest
         // colour among all of them), only the indices differ

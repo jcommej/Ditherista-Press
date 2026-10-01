@@ -79,4 +79,12 @@ QImage sideBySidePrint(const std::vector<QImage>& films, const std::vector<InkCh
 QImage superposedPrint(const std::vector<QImage>& films, const std::vector<InkChannel>& inks,
                        const std::vector<double>& opacity);
 
+/* One layer per pass of a palette print, to stack in order (Normal blend, transparent where the pass does not
+ * print; null for a null film). Side by side: the ink's own colour - the last pass wins, as sideBySidePrint.
+ * Superposed: a progressive proof - where a pass prints, the colour of the print after that pass (superposedPrint
+ * of the passes so far), so all the layers show the superposed print, and hiding the top ones the print after
+ * fewer passes. */
+std::vector<QImage> printLayers(const std::vector<QImage>& films, const std::vector<InkChannel>& inks,
+                                const std::vector<double>& opacity, bool superposed);
+
 #endif // SEPARATION_H

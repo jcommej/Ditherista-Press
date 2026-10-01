@@ -264,3 +264,48 @@ QImage superposedPrint(const std::vector<QImage>& films, const std::vector<InkCh
     }
     return out;
 }
+
+std::vector<QImage> printLayers(const std::vector<QImage>& films, const std::vector<InkChannel>& inks,
+                                const std::vector<double>& opacity, const bool superposed) {
+    std::vector<QImage> layers(films.size());
+    const QImage* first = firstFilm(films);
+    if (first == nullptr || films.size() != inks.size()) {
+        return layers;
+    }
+    for (size_t i = 0; i < films.size(); i++) {
+        if (!films[i].isNull()) {
+            layers[i] = QImage(first->size(), QImage::Format_ARGB32);
+            layers[i].fill(Qt::transparent);
+        }
+    }
+    const InkSimulation::Spectrum paper = InkSimulation::reflectanceFromSrgb(qRgb(255, 255, 255));
+    std::vector<InkSimulation::Ink> simulated;
+    if (superposed) {
+        for (size_t i = 0; i < inks.size(); i++) {
+            simulated.push_back(InkSimulation::inkFromPrint(inks[i].ink, i < opacity.size() ? opacity[i] : 0.0, paper));
+        }
+    }
+    std::map<std::vector<int>, QRgb> colours;  // per combination of passes so far
+    std::vector<int> passes;
+    for (int y = 0; y < first->height(); y++) {
+        for (int x = 0; x < first->width(); x++) {
+            passes.clear();
+            for (size_t i = 0; i < films.size(); i++) {
+                if (films[i].isNull() || !inked(films[i], x, y)) {
+                    continue;
+                }
+                passes.push_back(static_cast<int>(i));
+                QRgb colour = inks[i].ink;
+                if (superposed) {
+                    auto found = colours.find(passes);
+                    if (found == colours.end()) {
+                        found = colours.emplace(passes, InkSimulation::print(simulated, passes, paper)).first;
+                    }
+                    colour = found->second;
+                }
+                reinterpret_cast<QRgb*>(layers[i].scanLine(y))[x] = colour | 0xFF000000u;
+            }
+        }
+    }
+    return layers;
+}

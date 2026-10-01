@@ -392,8 +392,11 @@ void MainWindow::copyToClipboard() {
             if (format == "psd") {  // one document holding every ink, as Save writes it
                 const QString path = folder.filePath(base + ".psd");
                 std::vector<PsdSpotChannel> spots;
+                const std::vector<QImage> layers = separationLayers(films);  // palette inks: as the print view shows
                 for (size_t i = 0; i < films.size() && i < inks.size(); i++) {
-                    if (!films[i].isNull()) spots.push_back({inks[i].name, inks[i].ink, films[i]});
+                    if (!films[i].isNull()) {
+                        spots.push_back({inks[i].name, inks[i].ink, films[i], i < layers.size() ? layers[i] : QImage()});
+                    }
                 }
                 QImage composite = withProfile(separationPrint(films));
                 ok = writePsd(path, composite, spots, screenGeometry.dpi, &error,

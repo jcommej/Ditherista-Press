@@ -230,6 +230,9 @@ or a short-lived full-resolution cache for export, without duplicating them.
   CIE 1931 2-degree CMFs and D65 (tables from CVRL and colour-science, 10 nm). Opacity 0 = pure filters, order
   irrelevant; opaque = last pass dominates. Colours cached per combination of inks (95 ms for 2070 x 1528, 7 inks).
   Paper is white; a paper / garment colour would be the next step.
+- PSD layers of palette inks follow the print view (`printLayers`, Normal blend): side by side = flat ink colours;
+  superposed = progressive proof, each pass holding the colour of the print after it (all layers = the simulation,
+  checked to the pixel with psd-tools). Without Overprint palette inks never overlap: a notice says so.
 - Save As offers the PSD layouts directly (inks as layers / spot channels / both: `FileManager::currentPsdLayout`,
   synced to the panel); Save "Separate channels + simulated print" writes the films and `name_print.ext`.
 - Custom palette question: "Don't ask again" + Preferences > Color Management. Themes on the custom page rebuild

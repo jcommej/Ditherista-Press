@@ -293,6 +293,9 @@ private:
     bool printSuperposed = false;   // the print view last chosen; Save and Copy use it
     [[nodiscard]] int separationFilmOffset() const;  // View combo entries before the first film
     [[nodiscard]] QImage separationPrint(const std::vector<QImage>& films) const;
+    [[nodiscard]] std::vector<double> paletteOpacities() const;
+    // PSD layers of the palette inks, following the print view (empty for CMYK / RGB: Multiply / Screen)
+    [[nodiscard]] std::vector<QImage> separationLayers(const std::vector<QImage>& films) const;
     std::vector<QImage> separationFilmsAtOutput();
     bool saveSeparation(const QString& fileName, QString* error, int* written);
 
