@@ -279,16 +279,17 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | — Separation moved to the Color tab + Palette separation | done (`feature/separation-colour-tab`) |
 | — Palette editor (HEX, lock, delete, add, randomize, undo), live colour picker + CIELAB panel | done (`feature/palette-editor`, `fix/palette-tab-scroll`) |
 | 10 UI: navigation (zoom modes, drag pan, joystick, inertia, pinch, 1:1, Fit), Preferences window (colour management, preview quality, zoom/wheel, background, clipboard, file names, folders, calibration), Open Recent, Paste Image, Copy to Clipboard | done (`feature/navigation-preferences`) |
-| — Rename to Ditherista Press; render control (pause / render once) | to test (`feature/rename-press`, `feature/render-pause`) |
-| — Favourite ditherers (stars), pixel controls (padlock, reset cross, status dot) | to test (`feature/favorite-ditherers`, from `feature/render-pause`) |
-| — Global undo / redo, stopping a render | to test (`feature/undo-stop`, from `feature/favorite-ditherers`) |
-| — Palette themes; custom palette question, themes on custom, colour order, overprint / superposed print | to test (`feature/palette-presets`, from `feature/undo-stop`) |
+| — Rename to Ditherista Press; render control (pause / render once) | done (`feature/rename-press`, `feature/render-pause`) |
+| — Favourite ditherers (stars), pixel controls (padlock, reset cross, status dot) | done (`feature/favorite-ditherers`) |
+| — Global undo / redo, stopping a render | done (`feature/undo-stop`) |
+| — Palette themes; custom palette question, themes on custom, colour order, overprint / superposed print | done (`feature/palette-presets`) |
 
-### Done in the 2026-10-01/02 sessions (branches stacked, none merged or pushed yet)
+### Done in the 2026-10-01/02 sessions (validated, merged and pushed 2026-10-02)
 
 `feature/rename-press` -> `feature/render-pause` -> `feature/favorite-ditherers` -> `feature/undo-stop` ->
-`feature/palette-presets`, each from the previous one. The user tested along the way; merge them in this order
-into `feature/screenprinting-workflow` (`--no-ff`) and push once they say so ("valide").
+`feature/palette-presets` were stacked, each from the previous one, and merged in that order (`--no-ff`) into
+`feature/screenprinting-workflow`. Demo for testers: `D:\Documents\Ditherista-Press-demo-2026-10-02.zip`
+(`dist\ditherista` + LISEZMOI.txt in French, UTF-8 with BOM for Notepad).
 - Rename to Ditherista Press (display name only).
 - Render control: pause / render once, breathing during every render, stop with the button or Esc.
 - Favourite ditherers (diamond star, copies on top); pixel padlock, reset cross, status dot.
@@ -299,10 +300,25 @@ into `feature/screenprinting-workflow` (`--no-ff`) and push once they say so ("v
   that follow the print view (progressive proof when superposed); PSD layouts in Save As; Save "Separate
   channels + simulated print".
 
-To check with the user: the two new Save options were only exercised in the harness through `saveFile`, not
-through the Save As dialog itself; the animation of the padlock and of the status dot was never captured mid-way.
+The two new Save options were only exercised in the harness through `saveFile`, and the padlock / status dot
+animations were never captured mid-way; the user accepted that ("validé").
 
 ### Next objectives (as of 2026-10-02)
+
+**Reported by the user, to fix at the start of the next session** (they asked not to fix them right away):
+1. **Color Separation settings are not remembered**: the last ones (mode, view, save choice, PSD layout, the
+   PSD composite box, per-ink settings) must come back at the next launch - in `preferences.ini`, like the other
+   preferences, without breaking presets and undo.
+2. **The Opacity of palette inks seems to have no effect.** To investigate: it only acts in View "Print -
+   superposed" and only where inks overlap, i.e. where an ink is set to Overprint (one ink per pixel otherwise);
+   check also that changing it re-renders (`showSeparation` without re-split: is the print recomputed or a
+   cached image shown?), that the PSD / saved print use it, and whether the range of S X (0.01 + 6 o^2) is too
+   narrow to be visible. Make its effect visible or explain it in the UI.
+3. **Ctrl+Z in the Palette tab goes back to the colour algorithms** instead of the previously selected colour:
+   the global history (`mainwindow_history.cpp`) records the ditherer selection, and a palette edit followed by
+   Ctrl+Z restores another state than the user expects. Decide with the user what Ctrl+Z should undo while the
+   Palette tab is shown (probably: palette steps first, or the colour selection in the palette list) - the
+   colour picker keeps its own Ctrl+Z.
 
 Proposed, not decided yet (from this session):
 - **Paper / garment colour for the superposed print** (white only now): kraft paper, a dark t-shirt, and with it
