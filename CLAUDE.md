@@ -136,6 +136,7 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `ui_elements/pixelglyphs.*` | square-pixel glyphs snapped to device pixels: padlock (6×7, open = shackle up one pixel, left leg out), reset cross (7×7, pixels scatter and come back), dithered status dot (8×8, hollow ring → full, fills left to right) |
 | `ui_elements/pixelbuttonglyph.*` | `PixelButtonGlyph::attach`: the glyph over an existing button (transparent to the mouse, icon removed); Lock follows `toggled`, Cross animates on `clicked` without delaying it |
 | `treewidget.*` (+ delegate) | favourites in the ditherer lists: star left of the status dot, click on it never selects (not passed to the base press); after the animation `rebuildFavoriteRows` puts a copy of each favourite on top (`ROLE_FAVORITE_COPY`), the ditherer staying at its place too; selection and rows on screen kept; thin line under the copies. Dithered flag per ditherer for the original and its copy (`setDitherFlag`, animated, `doneFill`); the delegate finds the selected row by `ROLE_NATURAL_ROW` |
+| `palette/palettethemes.h` | palette themes Ristretto 3 / Serré 4 / Filtre 7 / Assemblage 11 / Grand Cru 32: settings of the existing reduction (count, method, black and white kept); the Theme row on the reduced page shows the theme the fields match, else Custom |
 | `history/sessionhistory.*` | undo stack of session states (compact JSON, no limit), redo dropped by a new change |
 | `history/abandonedrenders.*` | stopped renders left running: frees deferred until the last one ends |
 | `mainwindow_history.cpp` | Edit > Undo / Redo: `captureSession` (preset sections + print size and padlock + both tabs' ditherer and adjustments + every ditherer's settings), recorded 120 ms after a change (renders and mouse/key releases schedule it), `restoreSession` applies only what differs (selection only = cached results reused; otherwise `applyPreset`) |
@@ -212,6 +213,9 @@ or a short-lived full-resolution cache for export, without duplicating them.
   interrupted, so the thread finishes in the background and is discarded - then the change that started it is
   undone (back to the last recorded state) and the control **pauses**. A render asked from Pause keeps its settings.
   Export renders and the colour picker's live preview cannot be stopped.
+- **Palette themes** (user: "se baser sur l'existant, simplicité"): no new algorithm, no stored theme - a theme only fills
+  the reduced palette's fields, so presets and undo carry it for free. The reduction combo mapped index + 1 upstream
+  (Median Cut ran Wu, Wu ran KD-Tree, KD-Tree ran Median Cut): fixed, the method shown is the one used.
 - Postponed by the user: dot shapes (maybe with other algorithms), histogram, dot cut-off / high-cut overlay.
 - Known open question: matrix smoothing for round dots / more grey levels at high DPI was proposed and
   postponed by the user ("je valide pour le moment").
@@ -240,6 +244,7 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | — Rename to Ditherista Press; render control (pause / render once) | to test (`feature/rename-press`, `feature/render-pause`) |
 | — Favourite ditherers (stars), pixel controls (padlock, reset cross, status dot) | to test (`feature/favorite-ditherers`, from `feature/render-pause`) |
 | — Global undo / redo, stopping a render | to test (`feature/undo-stop`, from `feature/favorite-ditherers`) |
+| — Palette themes | to test (`feature/palette-presets`, from `feature/undo-stop`) |
 
 ### Next objectives (as of 2026-10-01)
 

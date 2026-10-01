@@ -359,7 +359,7 @@ void MainWindow::applyPresetPalette(const QJsonObject& palette) {
     whileBlocking(ui->paletteColorsEdit)->setText(QString::number(palette.value("colors").toInt(16)));
     const int reduction = palette.value("reduction").toInt(ui->colorReductionCombo->currentIndex());
     whileBlocking(ui->colorReductionCombo)->setCurrentIndex(reduction);
-    colorReductionMode = static_cast<enum QuantizationMethod>(reduction + 1);  // as in colorReductionComboChangedSlot
+    colorReductionMode = static_cast<enum QuantizationMethod>(reduction);  // as in colorReductionComboChangedSlot
     whileBlocking(ui->palGenUniqueColorsCheck)->setChecked(palette.value("unique").toBool());
     whileBlocking(ui->palGenBWCheck)->setChecked(palette.value("bw").toBool());
     whileBlocking(ui->palGenRGBCheck)->setChecked(palette.value("rgb").toBool());

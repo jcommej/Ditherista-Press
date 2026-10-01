@@ -175,6 +175,10 @@ private:
     PaletteHistory paletteHistory;
     std::vector<bool> customLocks;  // locks of customPalette's colours; ignored if the sizes differ
     void setupPaletteEditor();
+    // palette themes of the reduced palette, see mainwindow_palette.cpp and palette/palettethemes.h
+    QComboBox* paletteThemeCombo = nullptr;
+    void setupPaletteThemes();
+    void updatePaletteThemeCombo();  // the theme the fields match, or Custom
     [[nodiscard]] PaletteEntries currentPaletteEntries() const;  // the palette the colour ditherers use
     // one undoable step: records the current palette, runs `beforeApply` (e.g. to realign the separation's
     // inks), applies; nothing happens if the user cancels replacing an earlier custom palette
