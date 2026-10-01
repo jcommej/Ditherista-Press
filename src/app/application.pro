@@ -38,6 +38,8 @@ SOURCES += \
     batch/fileexistsdialog.cpp \
     ui_elements/mouseeventfilter.cpp \
     ui_elements/favoritestar.cpp \
+    ui_elements/pixelglyphs.cpp \
+    ui_elements/pixelbuttonglyph.cpp \
     ui_elements/stackedwidget.cpp \
     ui_elements/notificationlabel.cpp \
     ui_elements/elidelabel.cpp \
@@ -105,6 +107,8 @@ HEADERS += \
     ui_elements/elidelabel.h \
     ui_elements/mouseeventfilter.h \
     ui_elements/favoritestar.h \
+    ui_elements/pixelglyphs.h \
+    ui_elements/pixelbuttonglyph.h \
     ui_elements/messagebox.h \
     ui_elements/doublepushbutton.h \
     ui_elements/doublelabel.h \

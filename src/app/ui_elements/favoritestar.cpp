@@ -9,21 +9,21 @@ namespace FavoriteStar {
 const Pattern EMPTY = {{
     {0, 0, 0, 1, 0, 0, 0},
     {0, 0, 1, 0, 1, 0, 0},
-    {1, 1, 0, 0, 0, 1, 1},
     {0, 1, 0, 0, 0, 1, 0},
-    {0, 0, 1, 1, 1, 0, 0},
-    {0, 1, 1, 0, 1, 1, 0},
-    {1, 1, 0, 0, 0, 1, 1},
+    {1, 0, 0, 0, 0, 0, 1},
+    {0, 1, 0, 0, 0, 1, 0},
+    {0, 0, 1, 0, 1, 0, 0},
+    {0, 0, 0, 1, 0, 0, 0},
 }};
 
 const Pattern FILLED = {{
     {0, 0, 0, 1, 0, 0, 0},
     {0, 0, 1, 1, 1, 0, 0},
+    {0, 1, 1, 1, 1, 1, 0},
     {1, 1, 1, 1, 1, 1, 1},
     {0, 1, 1, 1, 1, 1, 0},
     {0, 0, 1, 1, 1, 0, 0},
-    {0, 1, 1, 0, 1, 1, 0},
-    {1, 1, 0, 0, 0, 1, 1},
+    {0, 0, 0, 1, 0, 0, 0},
 }};
 
 namespace {
@@ -88,23 +88,6 @@ void paint(QPainter* painter, const QRectF& rect, const bool from, const bool to
 }
 
 }  // namespace FavoriteStar
-
-std::vector<int> favoriteOrder(const std::vector<int>& ids, const QList<int>& favorites) {
-    std::vector<int> order;
-    order.reserve(ids.size());
-    for (const int favorite : favorites) {
-        if (std::find(ids.begin(), ids.end(), favorite) != ids.end() &&
-            std::find(order.begin(), order.end(), favorite) == order.end()) {
-            order.push_back(favorite);
-        }
-    }
-    for (const int id : ids) {
-        if (!favorites.contains(id)) {
-            order.push_back(id);
-        }
-    }
-    return order;
-}
 
 bool toggleFavorite(QList<int>& favorites, const int id) {
     if (favorites.removeAll(id) > 0) {

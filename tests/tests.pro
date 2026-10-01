@@ -32,6 +32,8 @@ SOURCES += \
     $$APP/preferences/preferences.cpp \
     $$APP/ui_elements/mouseeventfilter.cpp \
     $$APP/ui_elements/favoritestar.cpp \
+    $$APP/ui_elements/pixelglyphs.cpp \
+    $$APP/ui_elements/pixelbuttonglyph.cpp \
     $$APP/treewidget.cpp \
     $$APP/treewidgetdelegate.cpp \
     $$APP/color/colorspace.cpp \

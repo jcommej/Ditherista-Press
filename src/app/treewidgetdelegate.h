@@ -12,10 +12,6 @@ public:
     explicit TreeWidgetDelegate(QObject* parent);
     void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override;
     static QRect starRect(const QRect& row);  // the favourite star, left of the dithered / not dithered dot
-private:
-    /* attributes */
-    QPixmap ready;
-    QPixmap notReady;
 };
 
 #endif  // TREEWIDGETDELEGATE_H

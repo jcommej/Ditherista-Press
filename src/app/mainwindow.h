@@ -267,7 +267,6 @@ private:
         QDoubleSpinBox* spin;
     };
     std::vector<AdjustControl> adjustControls;
-    QIcon adjustResetIcon;
     void setupToneControls();
     void resetToneControls();
     void addAdjustRow(QGridLayout* grid, int row, const QString& label, const QString& toolTip, int minimum,
@@ -280,7 +279,7 @@ private:
     void setMouseBusy(bool isBusy);
     void enableGui(bool enable);
     QPixmap* loadSvg(const QString& fileName); // load SVG as QPixmap from (resource) file
-    void setResetIcon(QPushButton* button, const QIcon* icon);
+    void setResetIcon(QPushButton* button);  // size and pixel cross of a reset button
     void uiSetup();                       // ui initialization (main)
     void setDithererDefaults();           // ui initialization
     void populateDithererSelection();     // ui initialization

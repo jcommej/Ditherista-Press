@@ -1,6 +1,7 @@
 #include "treewidgetdelegate.h"
 #include "treewidget.h"
 #include "ui_elements/favoritestar.h"
+#include "ui_elements/pixelglyphs.h"
 #include <QPainter>
 
 // https://stackoverflow.com/questions/7175333/how-to-create-delegate-for-qtreewidget
@@ -9,8 +10,6 @@ constexpr int ICON_DIMENSION_PX = 16;
 constexpr int STAR_PX = 14;
 
 TreeWidgetDelegate::TreeWidgetDelegate(QObject* parent) : QStyledItemDelegate(parent) {
-    ready = QPixmap(":/resources/img_done.svg");
-    notReady = QPixmap(":/resources/img_notdone.svg");
 };
 
 QRect TreeWidgetDelegate::starRect(const QRect& row) {
@@ -43,16 +42,16 @@ void TreeWidgetDelegate::paint(QPainter* painter, const QStyleOptionViewItem& op
         itemOption.state = QStyle::State_None;
     }
     QStyledItemDelegate::paint(painter, itemOption, index);
-    // draw icon when image has been dithered / not dithered
+    // dithered / not dithered: a full pixel dot when a result is cached, a hollow ring when not (not clickable)
     int dim = ICON_DIMENSION_PX; // image dimensions
     int ypos = option.rect.y() + static_cast<int>((option.rect.height() - dim) * 0.5f);
     int xpos = option.rect.width() - dim - 4;
-    if(index.data(Qt::UserRole).toBool()) {
-        painter->drawPixmap(QRect(xpos, ypos, dim, dim), ready);
-    } else {
-        painter->drawPixmap(QRect(xpos, ypos, dim, dim), notReady);
-    }
     const TreeWidget* tree = qobject_cast<const TreeWidget*>(parent());
+    const double ratio = painter->device() != nullptr ? painter->device()->devicePixelRatioF() : 1.0;
+    const double fill = tree != nullptr ? tree->doneFill(index.data(ROLE_DITHER_ID).toInt())
+                                        : (index.data(Qt::UserRole).toBool() ? 1.0 : 0.0);
+    PixelGlyphs::paintStatusDot(painter, QRectF(xpos, ypos, dim, dim), fill, QColor(0x6a, 0x6a, 0x6a),
+                                QColor(0xb2, 0xb2, 0xb2), ratio);
     if (tree == nullptr) {
         return;
     }
