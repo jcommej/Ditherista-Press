@@ -1,6 +1,6 @@
 # Unit tests for the screen-printing additions. Plain QtTest, no GUI shown, no files written outside build/.
 #   build and run: tests\run_tests.ps1 (Windows) - needs libdither built first (cd libdither && make libdither)
-QT += core gui widgets testlib
+QT += core gui widgets testlib concurrent
 CONFIG += c++20 console
 CONFIG -= app_bundle
 TARGET = tests
@@ -29,6 +29,9 @@ SOURCES += \
     tst_preferences.cpp \
     tst_render.cpp \
     tst_favorites.cpp \
+    tst_history.cpp \
+    $$APP/history/sessionhistory.cpp \
+    $$APP/history/abandonedrenders.cpp \
     $$APP/preferences/preferences.cpp \
     $$APP/ui_elements/mouseeventfilter.cpp \
     $$APP/ui_elements/favoritestar.cpp \

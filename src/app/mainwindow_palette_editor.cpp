@@ -10,7 +10,8 @@
 
 /* This file contains:
  * - the palette editor of the Palette tab: editable HEX, lock, delete and randomize per colour, Add Color,
- *   Randomize, Save / Load Palette, and undo / redo of palette changes (Edit menu, Ctrl+Z / Ctrl+Y)
+ *   Randomize, Save / Load Palette; palette changes are steps of Edit > Undo (mainwindow_history.cpp), the colour
+ *   picker walks its own session with Ctrl+Z
  *
  * The palette is still the one the colour ditherers already use (cachedPalette->target_palette). Any change turns
  * it into the custom palette, as editing a colour always has, and re-dithers. Every change goes through
@@ -126,15 +127,8 @@ void MainWindow::setupPaletteEditor() {
         notification->showText("<font color=#ec6a5e>" + tr("ERROR") + "</font>\n" + tr("palette not loaded") + "\n" + error, 3000);
     });
 
-    // undo / redo in the Edit menu; a text field being edited keeps Ctrl+Z for itself
-    ui->menuEdit->addSeparator();
-    undoPaletteAction = ui->menuEdit->addAction(tr("Undo Palette Change"));
-    undoPaletteAction->setShortcut(QKeySequence::Undo);
-    redoPaletteAction = ui->menuEdit->addAction(tr("Redo Palette Change"));
-    redoPaletteAction->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z)});
-    connect(undoPaletteAction, &QAction::triggered, this, [this]() { undoPalette(false); });
-    connect(redoPaletteAction, &QAction::triggered, this, [this]() { undoPalette(true); });
-    updatePaletteHistoryActions();
+    // palette edits are steps of Edit > Undo, the history of every setting (mainwindow_history.cpp); paletteHistory
+    // still serves the colour picker's own Ctrl+Z within a session
 }
 
 PaletteEntries MainWindow::currentPaletteEntries() const {
@@ -207,14 +201,6 @@ void MainWindow::applyPaletteEntries(const PaletteEntries& entries) {
         generateCachedPalette(true, false, true);
     } else {
         ui->paletteSourceCombo->setCurrentIndex(PALETTE_CUSTOM);  // shows the custom page and re-dithers
-    }
-    updatePaletteHistoryActions();
-}
-
-void MainWindow::updatePaletteHistoryActions() {
-    if (undoPaletteAction != nullptr) {
-        undoPaletteAction->setEnabled(paletteHistory.canUndo());
-        redoPaletteAction->setEnabled(paletteHistory.canRedo());
     }
 }
 
@@ -406,5 +392,5 @@ void MainWindow::endPickerSession(const bool keep) {
     pickerIndex = -1;
     liveSource.reset();  // the reduced picture is only kept while picking
     paletteEditor->setEditingRow(-1);
-    updatePaletteHistoryActions();
+    scheduleHistoryCapture();  // the session is one step of Edit > Undo
 }

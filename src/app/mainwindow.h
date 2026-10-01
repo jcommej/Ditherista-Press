@@ -22,6 +22,7 @@
 #include "palette/colourpickerdialog.h"
 #include "preferences/preferences.h"
 #include "preferences/preferencesdialogs.h"
+#include "history/sessionhistory.h"
 #include <QTimer>
 #include <QJsonObject>
 #include <memory>
@@ -64,6 +65,8 @@ const QHash<int, int> ditherPage = {
         {ERR_C, 12}, {ORD_VA2_C, 13}, {ORD_VA4_C, 13}, {ORD_IGR_C, 14}};
 
 class RenderGlyphButton;
+
+struct RenderCancelled {};  // thrown by runDitherThread when the render control stops a render
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
@@ -171,15 +174,12 @@ private:
     PaletteEditor* paletteEditor = nullptr;
     PaletteHistory paletteHistory;
     std::vector<bool> customLocks;  // locks of customPalette's colours; ignored if the sizes differ
-    QAction* undoPaletteAction = nullptr;
-    QAction* redoPaletteAction = nullptr;
     void setupPaletteEditor();
     [[nodiscard]] PaletteEntries currentPaletteEntries() const;  // the palette the colour ditherers use
     // one undoable step: records the current palette, runs `beforeApply` (e.g. to realign the separation's
     // inks), applies; nothing happens if the user cancels replacing an earlier custom palette
     void editPalette(const PaletteEntries& edited, const std::function<void()>& beforeApply = {});
     void applyPaletteEntries(const PaletteEntries& entries);  // becomes the custom palette, then re-dither
-    void updatePaletteHistoryActions();
     void undoPalette(bool redo);  // one step back or forward, from the Edit menu or the colour picker
     // colour picker session on one palette colour: live low-resolution preview while the colour moves, the full
     // preview and one undo step once it rests (see mainwindow_palette_editor.cpp)
@@ -232,6 +232,27 @@ private:
     void renderPending();           // the held work, then one render
     void renderBeforeExport();      // save / copy while paused: the file matches the settings shown
     bool requestOutputSize(double dpi, double widthMm, double heightMm);  // applyOutputSize, or held while paused
+    // stopping a render with the render control or Esc: runDitherThread throws RenderCancelled back to reDither
+    bool renderStoppable = false;     // inside reDither: a stop is possible
+    bool renderStopRequested = false;
+    bool renderFromFlush = false;     // the render the paused control asked for
+    bool stoppedFlush = false;        // ...was the one stopped: its settings stay
+    void requestRenderStop();
+    void renderStopped();             // the change is undone, the control pauses
+    // undo / redo of every setting, see mainwindow_history.cpp
+    SessionHistory history;
+    QTimer captureTimer;              // records a state shortly after a change
+    QAction* undoAction = nullptr;
+    QAction* redoAction = nullptr;
+    bool restoringHistory = false;
+    void setupHistory();
+    void scheduleHistoryCapture();
+    void resetHistory();              // a new picture: a new history
+    void updateHistoryActions();
+    [[nodiscard]] QJsonObject captureSession() const;
+    void restoreSession(const QJsonObject& target);
+    void undoSession(bool redo);
+    void selectDitherer(TreeWidget* tree, int id, bool load);
     // presets, see mainwindow_presets.cpp
     std::unique_ptr<PresetStore> presetStore;
     QGroupBox* presetGroup = nullptr;
@@ -242,6 +263,8 @@ private:
     [[nodiscard]] QJsonObject capturePreset() const;
     void applyPreset(const QJsonObject& preset);
     void applyPresetPalette(const QJsonObject& palette);
+    [[nodiscard]] QJsonObject captureAdjustments(bool mono) const;  // Input Image Settings of one tab
+    void applyAdjustments(const QJsonObject& adjust, bool mono);
     // settings panels in a scroll area, so the ditherer list keeps its room on small screens
     QGroupBox* screenGroup = nullptr;
     QScrollArea* settingsScroll = nullptr;

@@ -21,6 +21,7 @@ QObject* newTestWheelOverFields();
 QObject* newTestRenderButton();
 QObject* newTestFavorites();
 QObject* newTestPixelGlyphs();
+QObject* newTestHistory();
 
 int main(int argc, char** argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen");  // widget tests run without showing any window
@@ -28,7 +29,7 @@ int main(int argc, char** argv) {
     int failed = 0;
     for (QObject* (*make)() : {newTestScreening, newTestAdjust, newTestExport, newTestPreview, newTestSeparation, newTestPsd, newTestPresets,
                                   newTestColour, newTestPalette, newTestColourPicker,
-                                  newTestPreferences, newTestNavigation, newTestWheelOverFields, newTestRenderButton, newTestFavorites, newTestPixelGlyphs}) {
+                                  newTestPreferences, newTestNavigation, newTestWheelOverFields, newTestRenderButton, newTestFavorites, newTestPixelGlyphs, newTestHistory}) {
         std::unique_ptr<QObject> test(make());
         const QString output = QString("results_%1.txt,txt").arg(test->metaObject()->className());
         const QStringList args = {app.arguments().first(), "-o", output};

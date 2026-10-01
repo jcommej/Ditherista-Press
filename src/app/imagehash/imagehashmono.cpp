@@ -1,4 +1,5 @@
 #include "imagehashmono.h"
+#include "../history/abandonedrenders.h"  // a stopped render may still read these
 #include "../screening/cellresample.h"
 #include "../adjust/filters.h"
 #include "../adjust/tonecurve.h"
@@ -7,8 +8,8 @@
 void ImageHashMono::setSourceImage(const QImage* inputImage, const bool keepAdjustments) {
     /* sets the source images */
     ImageHash::setSourceImage(inputImage);
-    DitherImage_free(sourceImage);  // previous picture or previous resolution (upstream leaked these)
-    DitherImage_free(origLinear);
+    AbandonedRenders::release(sourceImage);  // previous picture or previous resolution (upstream leaked these)
+    AbandonedRenders::release(origLinear);
     clearCoarseImage();
     sourceImage = DitherImage_new(origQImage.width(), origQImage.height());
     origLinear = DitherImage_new(origQImage.width(), origQImage.height());
@@ -86,7 +87,7 @@ void ImageHashMono::adjustSource() {
 }
 
 void ImageHashMono::clearCoarseImage() {
-    DitherImage_free(coarseImage);
+    AbandonedRenders::release(coarseImage);
     coarseImage = nullptr;
 }
 
@@ -127,8 +128,8 @@ void ImageHashMono::reset() {
     /* clears all dithered images and source / original images */
     ImageHash::reset();
     if(sourceImage != nullptr) {
-        DitherImage_free(sourceImage);
-        DitherImage_free(origLinear);
+        AbandonedRenders::release(sourceImage);
+        AbandonedRenders::release(origLinear);
     }
     clearCoarseImage();
 }

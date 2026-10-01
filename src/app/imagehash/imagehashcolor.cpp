@@ -1,5 +1,6 @@
 #include <QDebug>
 #include "imagehashcolor.h"
+#include "../history/abandonedrenders.h"  // a stopped render may still read these
 #include "../screening/cellresample.h"
 #include "../adjust/filters.h"
 #include "../adjust/tonecurve.h"
@@ -9,7 +10,7 @@
 void ImageHashColor::setSourceImage(const QImage* inputImage, const bool keepAdjustments) {
     /* sets the source images */
     ImageHash::setSourceImage(inputImage);
-    ColorImage_free(sourceImage);  // previous picture or previous resolution (upstream leaked it)
+    AbandonedRenders::release(sourceImage);  // previous picture or previous resolution (upstream leaked it)
     clearCoarseImage();
     sourceImage = ColorImage_new(origQImage.width(), origQImage.height());
     for(int y = 0; y < origQImage.height(); y++) {
@@ -133,7 +134,7 @@ void ImageHashColor::adjustSource() {
 }
 
 void ImageHashColor::clearCoarseImage() {
-    ColorImage_free(coarseImage);
+    AbandonedRenders::release(coarseImage);
     coarseImage = nullptr;
 }
 
@@ -175,7 +176,7 @@ void ImageHashColor::reset() {
     /* clears all dithered images and source / original images */
     ImageHash::reset();
     if(sourceImage != nullptr) {
-        ColorImage_free(sourceImage);
+        AbandonedRenders::release(sourceImage);
     }
     clearCoarseImage();
 }

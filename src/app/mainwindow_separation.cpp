@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "consts.h"
+#include <QScopeGuard>
 #include "export/filmwriter.h"
 #include "export/psdwriter.h"
 #include <QCheckBox>
@@ -151,6 +152,10 @@ std::vector<QImage> MainWindow::renderSeparation(const QImage& working, const do
     const std::vector<ChannelSettings>& settings = currentChannelSettings();
     const double previousDpi = renderDpi;
     renderDpi = dpi;  // LPI cells and dot size at this resolution
+    const auto restore = qScopeGuard([this, previousDpi]() {  // also when a stopped render unwinds through here
+        renderDpi = previousDpi;
+        renderChannel = -1;
+    });
     if (separationMode == SeparationMode::Palette) {
         std::vector<bool> wanted;
         for (const ChannelSettings& ink : settings) {

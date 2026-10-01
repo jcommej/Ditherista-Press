@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "history/abandonedrenders.h"
 #include "consts.h"
 #include <QtConcurrent>
 
@@ -160,19 +161,24 @@ void MainWindow::ditherInkPlane(ImageHashMono& plane) {
     plane.setCellSize(screenDotPixels());
     const DitherImage* image = plane.getDitherSourceImage();  // coarse grid when dot size is on
     uint8_t* out_buf = static_cast<uint8_t*>(calloc(static_cast<size_t>(image->width) * image->height, sizeof(uint8_t)));
-    if (current_dither_type == ERR_C) {
-        if (ErrorDiffusionMatrix* matrix = colorErrorMatrix(current_sub_dither_type)) {
-            fthread = QtConcurrent::run(error_diffusion_dither, image, matrix, ui->ERR_C_serpentine->isChecked(),
-                                        0.0, out_buf);
-            runDitherThread();
-            ErrorDiffusionMatrix_free(matrix);
+    try {
+        if (current_dither_type == ERR_C) {
+            if (ErrorDiffusionMatrix* matrix = colorErrorMatrix(current_sub_dither_type)) {
+                fthread = QtConcurrent::run(error_diffusion_dither, image, matrix, ui->ERR_C_serpentine->isChecked(),
+                                            0.0, out_buf);
+                runDitherThread();
+                ErrorDiffusionMatrix_free(matrix);
+            }
+        } else if (current_dither_type == ORD_C) {
+            if (OrderedDitherMatrix* matrix = applyLpi(colorOrderedMatrix(current_sub_dither_type), image->width, image->height)) {
+                fthread = QtConcurrent::run(ordered_dither, image, matrix, 0.0, out_buf);
+                runDitherThread();
+                OrderedDitherMatrix_free(matrix);
+            }
         }
-    } else if (current_dither_type == ORD_C) {
-        if (OrderedDitherMatrix* matrix = applyLpi(colorOrderedMatrix(current_sub_dither_type), image->width, image->height)) {
-            fthread = QtConcurrent::run(ordered_dither, image, matrix, 0.0, out_buf);
-            runDitherThread();
-            OrderedDitherMatrix_free(matrix);
-        }
+    } catch (const RenderCancelled&) {
+        AbandonedRenders::releaseBuffer(out_buf);  // a stopped ditherer may still be writing into it
+        throw;
     }
     plane.setImageFromDither(current_dither_number, out_buf);
     free(out_buf);

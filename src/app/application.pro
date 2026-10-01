@@ -74,6 +74,9 @@ SOURCES += \
     palette/colourpickerdialog.cpp \
     mainwindow_preferences.cpp \
     mainwindow_render.cpp \
+    mainwindow_history.cpp \
+    history/sessionhistory.cpp \
+    history/abandonedrenders.cpp \
     preferences/preferences.cpp \
     preferences/preferencesdialogs.cpp \
     treewidget.cpp \
@@ -107,6 +110,8 @@ HEADERS += \
     ui_elements/elidelabel.h \
     ui_elements/mouseeventfilter.h \
     ui_elements/favoritestar.h \
+    history/sessionhistory.h \
+    history/abandonedrenders.h \
     ui_elements/pixelglyphs.h \
     ui_elements/pixelbuttonglyph.h \
     ui_elements/messagebox.h \
