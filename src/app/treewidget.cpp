@@ -388,3 +388,29 @@ void TreeWidget::setValue(const SubDitherType key1, const SettingKey key2, const
 QVariant TreeWidget::getValue(const SubDitherType key1, const SettingKey key2) {
     return settings[key1][key2];
 }
+
+QJsonObject TreeWidget::settingsJson() const {
+    QJsonObject json;
+    for (auto it = settings.constBegin(); it != settings.constEnd(); ++it) {
+        QJsonObject values;
+        for (auto value = it.value().constBegin(); value != it.value().constEnd(); ++value) {
+            if (value.value().isValid()) {
+                values.insert(QString::number(value.key()), QJsonValue::fromVariant(value.value()));
+            }
+        }
+        if (!values.isEmpty()) {
+            json.insert(QString::number(it.key()), values);
+        }
+    }
+    return json;
+}
+
+void TreeWidget::setSettingsJson(const QJsonObject& json) {
+    for (const QString& subtype : json.keys()) {
+        const QJsonObject values = json.value(subtype).toObject();
+        for (const QString& key : values.keys()) {
+            settings[static_cast<SubDitherType>(subtype.toInt())][static_cast<SettingKey>(key.toInt())] =
+                values.value(key).toVariant();
+        }
+    }
+}

@@ -5,6 +5,7 @@
 #include "enums.h"
 #include <QElapsedTimer>
 #include <QHash>
+#include <QJsonObject>
 #include <QTimer>
 #include <QTreeWidget>
 #include <QMenu>
@@ -51,6 +52,9 @@ public:
     void setCurrentItemDitherFlag(bool value);
     void setValue(SubDitherType key1, SettingKey key2, const QVariant& value);
     QVariant getValue(SubDitherType key1, SettingKey key2);
+    // every ditherer's own settings, for the undo history: {"subtype": {"key": value}}
+    [[nodiscard]] QJsonObject settingsJson() const;
+    void setSettingsJson(const QJsonObject& json);
 protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;

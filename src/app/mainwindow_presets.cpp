@@ -140,21 +140,7 @@ QJsonObject MainWindow::capturePreset() const {
         {"dpi", screenGeometry.dpi}, {"lpi", screenGeometry.lpi}, {"lpiEnabled", screenGeometry.lpiEnabled},
         {"dotMm", screenGeometry.dotMm}, {"dotEnabled", screenGeometry.dotEnabled}});
 
-    // the Input Image Settings of the current tab
-    QJsonObject adjust;
-    const int values[] = {
-        mono ? imageHashMono.brightness : imageHashColor.brightness, mono ? imageHashMono.contrast : imageHashColor.contrast,
-        mono ? imageHashMono.gamma : imageHashColor.gamma, mono ? imageHashMono.blacks : imageHashColor.blacks,
-        mono ? imageHashMono.shadows : imageHashColor.shadows, mono ? imageHashMono.midtones : imageHashColor.midtones,
-        mono ? imageHashMono.highlights : imageHashColor.highlights, mono ? imageHashMono.whites : imageHashColor.whites,
-        mono ? imageHashMono.blur : imageHashColor.blur, mono ? imageHashMono.denoise : imageHashColor.denoise};
-    for (size_t i = 0; i < std::size(ADJUSTMENTS); i++) {
-        adjust.insert(ADJUSTMENTS[i], values[i]);
-    }
-    if (!mono) {
-        adjust.insert("saturation", imageHashColor.saturation);
-    }
-    preset.insert("adjust", adjust);
+    preset.insert("adjust", captureAdjustments(mono));  // the Input Image Settings of the current tab
 
     // separation, with every mode's inks so switching modes after loading keeps them too
     QJsonObject inks;
@@ -274,8 +260,56 @@ void MainWindow::applyPreset(const QJsonObject& preset) {
         applyPresetPalette(preset.value("palette").toObject());
     }
 
-    // Input Image Settings of that tab
-    const QJsonObject adjust = preset.value("adjust").toObject();
+    applyAdjustments(preset.value("adjust").toObject(), mono);  // Input Image Settings of that tab
+
+    // ditherer last: selecting it loads its settings into the panel
+    const QJsonObject settings = ditherer.value("settings").toObject();
+    for (const QString& key : settings.keys()) {
+        activeTreeWidget->setValue(static_cast<SubDitherType>(subtype), static_cast<SettingKey>(key.toInt()),
+                                   settings.value(key).toVariant());
+    }
+    for (QTreeWidgetItemIterator it(activeTreeWidget); *it; ++it) {
+        if ((*it)->data(ITEM_DATA_DSUBTYPE, Qt::UserRole).toInt() == subtype) {
+            activeTreeWidget->setCurrentItem(*it);
+            activeTreeWidget->treeWidgetItemChangedSlot(*it, 0);  // as if clicked: loads its settings, then re-dither
+            break;
+        }
+    }
+
+    // one render with everything in place
+    applyingPreset = false;
+    imageHashMono.clearAllDitheredImages();
+    imageHashColor.clearAllDitheredImages();
+    ui->treeWidgetMono->clearAllDitherFlags();
+    ui->treeWidgetColor->clearAllDitherFlags();
+    invalidateSeparation();
+    updateScreenControls();
+    updateSettingsPanelHeight();
+    if (!firstLoad) {
+        reDither(false);
+    }
+}
+
+QJsonObject MainWindow::captureAdjustments(const bool mono) const {
+    /* the Input Image Settings of one tab */
+    QJsonObject adjust;
+    const int values[] = {
+        mono ? imageHashMono.brightness : imageHashColor.brightness, mono ? imageHashMono.contrast : imageHashColor.contrast,
+        mono ? imageHashMono.gamma : imageHashColor.gamma, mono ? imageHashMono.blacks : imageHashColor.blacks,
+        mono ? imageHashMono.shadows : imageHashColor.shadows, mono ? imageHashMono.midtones : imageHashColor.midtones,
+        mono ? imageHashMono.highlights : imageHashColor.highlights, mono ? imageHashMono.whites : imageHashColor.whites,
+        mono ? imageHashMono.blur : imageHashColor.blur, mono ? imageHashMono.denoise : imageHashColor.denoise};
+    for (size_t i = 0; i < std::size(ADJUSTMENTS); i++) {
+        adjust.insert(ADJUSTMENTS[i], values[i]);
+    }
+    if (!mono) {
+        adjust.insert("saturation", imageHashColor.saturation);
+    }
+    return adjust;
+}
+
+void MainWindow::applyAdjustments(const QJsonObject& adjust, const bool mono) {
+    /* sets the Input Image Settings of one tab and adjusts its picture (held while a preset applies) */
     const auto get = [&adjust](const char* key) { return adjust.value(key).toInt(0); };
     if (mono) {
         imageHashMono.brightness = get("brightness"); imageHashMono.contrast = get("contrast"); imageHashMono.gamma = get("gamma");
@@ -314,33 +348,6 @@ void MainWindow::applyPreset(const QJsonObject& preset) {
     }
     if (!firstLoad) {
         if (mono) adjustImageMono(); else adjustImageColor();
-    }
-
-    // ditherer last: selecting it loads its settings into the panel
-    const QJsonObject settings = ditherer.value("settings").toObject();
-    for (const QString& key : settings.keys()) {
-        activeTreeWidget->setValue(static_cast<SubDitherType>(subtype), static_cast<SettingKey>(key.toInt()),
-                                   settings.value(key).toVariant());
-    }
-    for (QTreeWidgetItemIterator it(activeTreeWidget); *it; ++it) {
-        if ((*it)->data(ITEM_DATA_DSUBTYPE, Qt::UserRole).toInt() == subtype) {
-            activeTreeWidget->setCurrentItem(*it);
-            activeTreeWidget->treeWidgetItemChangedSlot(*it, 0);  // as if clicked: loads its settings, then re-dither
-            break;
-        }
-    }
-
-    // one render with everything in place
-    applyingPreset = false;
-    imageHashMono.clearAllDitheredImages();
-    imageHashColor.clearAllDitheredImages();
-    ui->treeWidgetMono->clearAllDitherFlags();
-    ui->treeWidgetColor->clearAllDitherFlags();
-    invalidateSeparation();
-    updateScreenControls();
-    updateSettingsPanelHeight();
-    if (!firstLoad) {
-        reDither(false);
     }
 }
 

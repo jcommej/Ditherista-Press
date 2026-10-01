@@ -7,6 +7,7 @@
 #include "export/filmwriter.h"
 #include "export/psdwriter.h"
 #include "viewport/renderglyphbutton.h"
+#include "history/abandonedrenders.h"
 #include <optional>
 
 #include <QClipboard>
@@ -72,6 +73,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     expandColorComparisonArea(false);
     connectSignals();
     setupFavoriteDitherers();        // stars in the ditherer lists, from the preferences
+    setupHistory();                  // Edit > Undo / Redo of every setting
 }
 
 MainWindow::~MainWindow() {
@@ -262,6 +264,7 @@ void MainWindow::reDither(const bool force) {
             }
         }
         renderDirty = true;
+        scheduleHistoryCapture();
         return;
     }
     // the render control breathes whenever something is computed - not when a cached result is only shown
@@ -275,34 +278,49 @@ void MainWindow::reDither(const bool force) {
         activity.emplace(renderButton);
     }
     setMouseBusy(true);
-    if(force) {
-        if (current_dither_number < COLOR_DITHER_START) {
-            imageHashMono.clearDitheredImage(current_dither_number);
-        } else {
-            imageHashColor.clearDitheredImage(current_dither_number);
+    renderStoppable = true;  // the render control (or Esc) may stop it: RenderCancelled, below
+    renderStopRequested = false;
+    try {
+        if(force) {
+            if (current_dither_number < COLOR_DITHER_START) {
+                imageHashMono.clearDitheredImage(current_dither_number);
+            } else {
+                imageHashColor.clearDitheredImage(current_dither_number);
+            }
         }
+        if (current_dither_number >= COLOR_DITHER_START && separationActive()) {  // one film per ink
+            if (force) {
+                invalidateSeparation();
+            }
+            showSeparation();
+        } else if (current_dither_number < COLOR_DITHER_START) { // MONO DITHERING
+            if(!imageHashMono.hasDitheredImage(current_dither_number)) {  // if dithered image isn't cached, then (re)compute it
+                ditherMonoInto(imageHashMono);
+                ui->treeWidgetMono->setCurrentItemDitherFlag(true);
+            }
+            setDitherImageMono(); // also applies custom light/dark colors
+            ui->graphicsView->showSourceMono(ui->showOriginalMono->checkState() == Qt::Checked); // is show original checked?
+        } else {  // COLOR DITHERING
+            if(!imageHashColor.hasDitheredImage(current_dither_number)) {  // if dithered image isn't cached, then (re)compute it
+                ditherColorInto(imageHashColor);
+                ui->treeWidgetColor->setCurrentItemDitherFlag(true);
+            }
+            ui->graphicsView->setDitherImageColor(imageHashColor.getDitheredImage(current_dither_number), ui->treeWidgetColor->getCurrentDitherFileName());
+            ui->graphicsView->showSourceColor(ui->showOriginalColor->checkState() == Qt::Checked); // is show original checked?
+        }
+    } catch (const RenderCancelled&) {
+        // stopped: nothing was cached for this render and the view still shows the previous result. The rest -
+        // undoing the change, pausing - waits until the callers have returned (renderStopped)
+        renderStoppable = false;
+        renderStopRequested = false;
+        stoppedFlush = renderFromFlush;
+        setMouseBusy(false);
+        QTimer::singleShot(0, this, &MainWindow::renderStopped);
+        return;
     }
-    if (current_dither_number >= COLOR_DITHER_START && separationActive()) {  // one film per ink
-        if (force) {
-            invalidateSeparation();
-        }
-        showSeparation();
-    } else if (current_dither_number < COLOR_DITHER_START) { // MONO DITHERING
-        if(!imageHashMono.hasDitheredImage(current_dither_number)) {  // if dithered image isn't cached, then (re)compute it
-            ditherMonoInto(imageHashMono);
-            ui->treeWidgetMono->setCurrentItemDitherFlag(true);
-        }
-        setDitherImageMono(); // also applies custom light/dark colors
-        ui->graphicsView->showSourceMono(ui->showOriginalMono->checkState() == Qt::Checked); // is show original checked?
-    } else {  // COLOR DITHERING
-        if(!imageHashColor.hasDitheredImage(current_dither_number)) {  // if dithered image isn't cached, then (re)compute it
-            ditherColorInto(imageHashColor);
-            ui->treeWidgetColor->setCurrentItemDitherFlag(true);
-        }
-        ui->graphicsView->setDitherImageColor(imageHashColor.getDitheredImage(current_dither_number), ui->treeWidgetColor->getCurrentDitherFileName());
-        ui->graphicsView->showSourceColor(ui->showOriginalColor->checkState() == Qt::Checked); // is show original checked?
-    }
+    renderStoppable = false;
     setMouseBusy(false);
+    scheduleHistoryCapture();
 }
 
 void MainWindow::ditherMonoInto(ImageHashMono& hash) {
@@ -312,19 +330,25 @@ void MainWindow::ditherMonoInto(ImageHashMono& hash) {
     hash.setCellSize(screenDotPixels());
     const DitherImage* ditherSource = hash.getDitherSourceImage();  // coarse grid when dot size is on
     uint8_t *out_buf = static_cast<uint8_t *>(calloc(static_cast<size_t>(ditherSource->width) * ditherSource->height, sizeof(uint8_t)));
-    switch (current_dither_type) {
-        case ALL: ALL_dither(out_buf); break;
-        case GRD: GRD_dither(out_buf); break;
-        case DBS: DBS_dither(out_buf); break;
-        case THR: THR_dither(out_buf); break;
-        case DOT: DOT_dither(out_buf, current_sub_dither_type); break;
-        case ERR: ERR_dither(out_buf, current_sub_dither_type); break;
-        case LIP: LIP_dither(out_buf, current_sub_dither_type); break;
-        case ORD: ORD_dither(out_buf, current_sub_dither_type); break;
-        case PAT: PAT_dither(out_buf, current_sub_dither_type); break;
-        case RIM: RIM_dither(out_buf, current_sub_dither_type); break;
-        case VAR: VAR_dither(out_buf, current_sub_dither_type); break;
-        default: break;
+    try {
+        switch (current_dither_type) {
+            case ALL: ALL_dither(out_buf); break;
+            case GRD: GRD_dither(out_buf); break;
+            case DBS: DBS_dither(out_buf); break;
+            case THR: THR_dither(out_buf); break;
+            case DOT: DOT_dither(out_buf, current_sub_dither_type); break;
+            case ERR: ERR_dither(out_buf, current_sub_dither_type); break;
+            case LIP: LIP_dither(out_buf, current_sub_dither_type); break;
+            case ORD: ORD_dither(out_buf, current_sub_dither_type); break;
+            case PAT: PAT_dither(out_buf, current_sub_dither_type); break;
+            case RIM: RIM_dither(out_buf, current_sub_dither_type); break;
+            case VAR: VAR_dither(out_buf, current_sub_dither_type); break;
+            default: break;
+        }
+    } catch (const RenderCancelled&) {
+        AbandonedRenders::releaseBuffer(out_buf);  // a stopped ditherer may still be writing into it
+        monoTarget = &imageHashMono;
+        throw;
     }
     hash.setImageFromDither(current_dither_number, out_buf);
     free(out_buf);
@@ -337,10 +361,16 @@ void MainWindow::ditherColorInto(ImageHashColor& hash) {
     hash.setCellSize(screenDotPixels());
     const ColorImage* ditherSource = hash.getDitherSourceImage();  // coarse grid when dot size is on
     int* out_buf = static_cast<int*>(calloc(static_cast<size_t>(ditherSource->width) * ditherSource->height, sizeof(int)));
-    switch (current_dither_type) {
-        case ERR_C: ERR_C_dither(out_buf, current_sub_dither_type); break;
-        case ORD_C: ORD_C_dither(out_buf, current_sub_dither_type); break;
-        default: break;
+    try {
+        switch (current_dither_type) {
+            case ERR_C: ERR_C_dither(out_buf, current_sub_dither_type); break;
+            case ORD_C: ORD_C_dither(out_buf, current_sub_dither_type); break;
+            default: break;
+        }
+    } catch (const RenderCancelled&) {
+        AbandonedRenders::releaseBuffer(out_buf);  // a stopped ditherer may still be writing into it
+        colorTarget = &imageHashColor;
+        throw;
     }
     hash.setImageFromDither(current_dither_number, cachedPalette->target_palette, out_buf);
     free(out_buf);
@@ -524,4 +554,5 @@ void MainWindow::loadImage(const QImage* image) {
     updateScreenControls();  // film size depends on the image dimensions
     treeWidgetItemChangedSlot(activeTreeWidget->currentItem());
     renderPaused = paused;
+    resetHistory();  // one history per picture
 }

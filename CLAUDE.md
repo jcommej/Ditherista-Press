@@ -54,7 +54,12 @@ Everything compiles with **`-Werror`**: a warning fails the build.
   `run_tests.ps1` prints.
 - **`runDitherThread()` calls `processEvents()` while a ditherer runs.** Anything event-driven (timers, queued
   calls) can re-enter. `applyOutputSize()` refuses while `isDithering`; a resample mid-dither once freed the
-  image being written. `reDither()` also returns while `applyingPreset`.
+  image being written. `reDither()` also returns while `applyingPreset`. User input is eaten meanwhile by the
+  render input gate (`mainwindow_render.cpp`) except the render button and Esc, which **stop** the render: inside
+  `reDither` only (`renderStoppable`), `runDitherThread` hands the thread to `AbandonedRenders` and throws
+  `RenderCancelled`, caught in `reDither`. Anything that frees a buffer a ditherer reads must go through
+  `AbandonedRenders::release*` (ImageHash does); state changed around a ditherer call must be restored on unwind
+  (`qScopeGuard` in `renderSeparation`, catch-rethrow in `ditherMonoInto`).
 - **The ditherer list reacts to `itemPressed`, not to `currentItemChanged`**: selecting an item in code does
   nothing unless `treeWidgetItemChangedSlot(item, 0)` is called (or `itemPressed` emitted).
 - **libdither is an upstream submodule: put new code in the app**, not in `libdither/`.
@@ -131,6 +136,9 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `ui_elements/pixelglyphs.*` | square-pixel glyphs snapped to device pixels: padlock (6×7, open = shackle up one pixel, left leg out), reset cross (7×7, pixels scatter and come back), dithered status dot (8×8, hollow ring → full, fills left to right) |
 | `ui_elements/pixelbuttonglyph.*` | `PixelButtonGlyph::attach`: the glyph over an existing button (transparent to the mouse, icon removed); Lock follows `toggled`, Cross animates on `clicked` without delaying it |
 | `treewidget.*` (+ delegate) | favourites in the ditherer lists: star left of the status dot, click on it never selects (not passed to the base press); after the animation `rebuildFavoriteRows` puts a copy of each favourite on top (`ROLE_FAVORITE_COPY`), the ditherer staying at its place too; selection and rows on screen kept; thin line under the copies. Dithered flag per ditherer for the original and its copy (`setDitherFlag`, animated, `doneFill`); the delegate finds the selected row by `ROLE_NATURAL_ROW` |
+| `history/sessionhistory.*` | undo stack of session states (compact JSON, no limit), redo dropped by a new change |
+| `history/abandonedrenders.*` | stopped renders left running: frees deferred until the last one ends |
+| `mainwindow_history.cpp` | Edit > Undo / Redo: `captureSession` (preset sections + print size and padlock + both tabs' ditherer and adjustments + every ditherer's settings), recorded 120 ms after a change (renders and mouse/key releases schedule it), `restoreSession` applies only what differs (selection only = cached results reused; otherwise `applyPreset`) |
 | `mainwindow_render.cpp` | render control: pause, held work (`renderDirty`, `sourceDirtyMono/Color`, `outputSizeDirty`), `renderPending` = one render, `requestOutputSize`, `renderBeforeExport` |
 
 `monoTarget` / `colorTarget` + `renderDpi` let the upstream ditherer functions render either the preview caches
@@ -197,6 +205,13 @@ or a short-lived full-resolution cache for export, without duplicating them.
 - **Pixel controls** (mock-up `ditherista_pixel_controls_demo.html`, sizes adapted so nothing moves): padlocks of the
   print size and the palette rows, reset crosses of every adjustment, status dots of the lists. The open padlock was
   made clearer than the mock-up at the user's request. The dot shows the cache flags MainWindow keeps; not clickable.
+- **Undo** (user's choices): Ctrl+Z / Ctrl+Y for every setting, unlimited, one history per picture (opening a
+  picture resets it, it is not a step). The palette's own Edit-menu undo was merged into it; the colour picker keeps
+  its Ctrl+Z inside its window, and its session is one step. A slider = one step on release.
+- **Stop** (user's choices): the render button (or Esc) during a render stops it at once - libdither cannot be
+  interrupted, so the thread finishes in the background and is discarded - then the change that started it is
+  undone (back to the last recorded state) and the control **pauses**. A render asked from Pause keeps its settings.
+  Export renders and the colour picker's live preview cannot be stopped.
 - Postponed by the user: dot shapes (maybe with other algorithms), histogram, dot cut-off / high-cut overlay.
 - Known open question: matrix smoothing for round dots / more grey levels at high DPI was proposed and
   postponed by the user ("je valide pour le moment").
@@ -224,6 +239,7 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | 10 UI: navigation (zoom modes, drag pan, joystick, inertia, pinch, 1:1, Fit), Preferences window (colour management, preview quality, zoom/wheel, background, clipboard, file names, folders, calibration), Open Recent, Paste Image, Copy to Clipboard | done (`feature/navigation-preferences`) |
 | — Rename to Ditherista Press; render control (pause / render once) | to test (`feature/rename-press`, `feature/render-pause`) |
 | — Favourite ditherers (stars), pixel controls (padlock, reset cross, status dot) | to test (`feature/favorite-ditherers`, from `feature/render-pause`) |
+| — Global undo / redo, stopping a render | to test (`feature/undo-stop`, from `feature/favorite-ditherers`) |
 
 ### Next objectives (as of 2026-10-01)
 

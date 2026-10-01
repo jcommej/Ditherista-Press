@@ -1,15 +1,23 @@
 #include "mainwindow.h"
 #include "modernredux/style.h"
 #include "consts.h"
+#include "history/abandonedrenders.h"
 #include <QClipboard>
 #include <QMimeData>
 
 void MainWindow::runDitherThread() {
-    /* executes a ditherer in a thread */
+    /* executes a ditherer in a thread. The GUI keeps painting meanwhile; user input is held back by the render input
+     * gate (mainwindow_render.cpp), except the render control and Esc: during a stoppable render they stop it - the
+     * ditherer is left to end on its own (AbandonedRenders) and RenderCancelled unwinds back to reDither */
     isDithering = true;
     while(!fthread.isFinished()) {
         QThread::msleep(THREAD_SLEEP_DELAY_MS);
-        QApplication::processEvents(QEventLoop::ExcludeUserInputEvents); // keep GUI thread alive while dithering
+        QApplication::processEvents(); // keep GUI thread alive while dithering
+        if (renderStopRequested && renderStoppable) {
+            AbandonedRenders::adopt(fthread);
+            isDithering = false;
+            throw RenderCancelled();
+        }
     }
     fthread.waitForFinished();
     isDithering = false;
