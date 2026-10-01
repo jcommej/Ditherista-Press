@@ -1,10 +1,75 @@
 # Ditherista Press
 
-**Ditherista Press** is a fork of [Ditherista](https://github.com/robertkist/ditherista) by Robert Kist, turned into a
-tool for preparing screen-printing films: physical print size, output DPI, LPI screens with per-ink angles, tone
-controls, CMYK/RGB and palette separation, lossless 1-bit film export, PSD with spot channels, presets.
+**Ditherista Press** turns [Ditherista](https://github.com/robertkist/ditherista), Robert Kist's dithering
+application, into a tool for preparing **screen-printing films**. It keeps all of Ditherista's 90+ dithering methods
+and adds what a print shop needs: real print sizes, output resolution and screen frequency, colour separations, ink
+simulation and lossless 1-bit films ready for the exposure unit.
 
-The upstream README follows.
+<img src="extra/screenshots/press_01.png" width="385" height="440"> <img src="extra/screenshots/press_02.png" width="385" height="440">
+
+## What Ditherista Press adds
+
+**Print size and screens**
+* Physical print size in millimetres (with a proportions padlock) and an **Output DPI**: changing the DPI never
+  changes the size on the film.
+* **LPI** for ordered (matrix) dithers - one matrix tile per screen cell, at any DPI - and a **dot size** in mm for
+  error diffusion and the others.
+* Large films (up to 250 megapixels): a lighter preview, the full film rendered on save.
+
+**Picture adjustments**
+* Blacks, Shadows, Midtones, Highlights and Whites (a smooth tone curve), Blur and Denoise, on top of Brightness,
+  Contrast, Gamma and Saturation. Neutral settings give exactly Ditherista's result.
+* Colour management: pictures converted from their embedded profile into a working space (sRGB by default).
+
+**Colour separation** (Color tab)
+* **CMYK** (4 films) or **RGB** (3 films), each ink dithered in black and white with its own LPI and screen angle.
+* **Palette - 1 film per colour**: one film per palette colour, in the order of the palette (drag the colours to
+  reorder them). Per ink: on/off, **Overprint** (the ink also prints under the following ones) and **Opacity**.
+* Simulated print **side by side** or **superposed**: a spectral simulation of inks printed one over the other
+  (Kubelka-Munk layers on 36 wavelength bands, reflectance recovered from sRGB with S. A. Burns' method). An aid to
+  decide, not a colour proof.
+
+**Palettes**
+* Palette editor: HEX values, locks, delete, add the colour the palette renders worst, randomize, undo; a live
+  colour picker with a CIELAB view.
+* **Palette themes** reducing the picture's own colours: Ristretto (3), Serré (4), Filtre (7), Assemblage (11),
+  Grand Cru (32).
+
+**Export**
+* Lossless films: PNG, TIFF (exact DPI, true 1-bit, PackBits) and BMP, the output DPI written in the file.
+* **PSD**: the inks as spot channels, as layers (the superposed print as a progressive proof), or both.
+* Copy to clipboard at full resolution; presets of every setting.
+
+**Workflow**
+* **Render control** (round button on the preview): pause automatic rendering while you change several settings,
+  render once, or stop a long render.
+* **Undo / redo** of every setting (Ctrl+Z / Ctrl+Y).
+* **Favourite** dithering methods on top of the lists; navigation with smooth zoom, drag to pan, 1:1 at the real
+  print size, and a Preferences window.
+
+## Getting it
+
+There is no release yet. On Windows, from a PowerShell prompt:
+
+```powershell
+git clone --recursive https://github.com/jcommej/Ditherista-Press
+cd Ditherista-Press
+.\scripts\setup-toolchain.ps1   # Qt 6.9 (MinGW) into C:\Qt, without a Qt account
+.\scripts\build.ps1 -Tests      # the app in dist\ditherista\ditherista.exe, then the unit tests
+```
+
+Linux and macOS builds follow Ditherista's [BUILDING.md](BUILDING.md) but are not tested for the new features.
+
+## Credits and licence
+
+Ditherista and [libdither](https://github.com/robertkist/libdither) are by Robert Kist, under the MIT licence;
+Ditherista Press keeps that licence (see [LICENSE](LICENSE)). The ink simulation uses the CIE 1931 colour matching
+functions and the D65 illuminant (CIE tables) and S. A. Burns, *Generating Reflectance Curves from sRGB Triplets*
+(arXiv:1710.05732).
+
+---
+
+*The original Ditherista README follows.*
 
 # Ditherista - A Ditherer for Windows, Linux and macOS
 

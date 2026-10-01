@@ -18,8 +18,8 @@ and the app's UI strings are **English**, like upstream.
 ## 1. Getting started on a new machine (Windows)
 
 ```powershell
-git clone --recursive https://github.com/jcommej/ditherista
-cd ditherista
+git clone --recursive https://github.com/jcommej/Ditherista-Press
+cd Ditherista-Press
 git remote add upstream https://github.com/robertkist/ditherista
 git config --local user.name jcommej
 git config --local user.email 227481831+jcommej@users.noreply.github.com   # never the personal address
