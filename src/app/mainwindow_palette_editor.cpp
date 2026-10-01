@@ -298,7 +298,8 @@ void MainWindow::pickPaletteColour(const int index) {
 void MainWindow::renderLivePalettePreview() {
     /* the colour dither with the colour being picked, on a reduced copy of the preview: fast enough to follow the
      * pointer. The full preview comes once the colour rests (settlePickerColour). */
-    if (pickerIndex < 0 || firstLoad || lastTabIndex != TAB_INDEX_COLOR || current_dither_number < COLOR_DITHER_START) {
+    if (pickerIndex < 0 || firstLoad || lastTabIndex != TAB_INDEX_COLOR || current_dither_number < COLOR_DITHER_START ||
+        renderPaused) {  // render control paused: the last result stays on screen
         return;
     }
     if (isDithering) {

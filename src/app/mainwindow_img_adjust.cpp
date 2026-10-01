@@ -81,6 +81,11 @@ void MainWindow::contrastEditMonoEditingFinishedSlot(double) {
 
 void MainWindow::adjustImageMono() {
     /* applies the current image adjustments to the source image - Mono */
+    if (renderPaused && !renderFlushing) {  // held until the render control resumes (mainwindow_render.cpp)
+        sourceDirtyMono = true;
+        renderDirty = true;
+        return;
+    }
     imageHashMono.adjustSource();
     imageHashMono.clearAllDitheredImages();
     ui->treeWidgetMono->clearAllDitherFlags();
@@ -204,6 +209,11 @@ void MainWindow::saturationEditColorEditingFinishedSlot(double) {
 
 void MainWindow::adjustImageColor() {
     /* applies the current image adjustments to the source image - Color */
+    if (renderPaused && !renderFlushing) {  // held until the render control resumes (mainwindow_render.cpp)
+        sourceDirtyColor = true;
+        renderDirty = true;
+        return;
+    }
     imageHashColor.adjustSource();
     generateCachedPalette(true, false, true);
     refreshUiColorDitherStatus(false, false);

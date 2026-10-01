@@ -241,7 +241,7 @@ void MainWindow::applyPreset(const QJsonObject& preset) {
         whileBlocking(dpiCombo)->setCurrentText(QString::number(static_cast<int>(dpi)));
         if (firstLoad) {
             screenGeometry.dpi = dpi;
-        } else if (!applyOutputSize(dpi, printWidthMm, printHeightMm)) {  // keeps the print size
+        } else if (!requestOutputSize(dpi, printWidthMm, printHeightMm)) {  // keeps the print size
             whileBlocking(dpiCombo)->setCurrentText(QString::number(static_cast<int>(screenGeometry.dpi)));
         }
     }

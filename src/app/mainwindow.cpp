@@ -50,6 +50,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     setupPresetControls();  // Load / Save / Delete, at the top of the settings
     setupPaletteEditor();   // editable colour list of the Palette tab, and palette undo
     setupPreferences();     // Preferences menu, 1:1 and Fit buttons
+    setupRenderControl();   // pause / render button in the preview's corner
     setupSettingsScroll();  // after every panel exists: they move into one scroll area
     // the two panels above take ~250 px from the ditherer list: open taller than the minimum when the screen allows
     resize(width(), std::min(DEFAULT_WINDOW_HEIGHT, screen()->availableGeometry().height() - 40));
@@ -246,6 +247,20 @@ void MainWindow::reDither(const bool force) {
 	 * exists in the hash. */
     if(isDithering || applyingPreset)  // a preset renders once, after setting everything
         return;
+    if (renderPaused) {  // render control paused (mainwindow_render.cpp): the last result stays on screen
+        if (force) {     // the cached result is stale: dropped now, rendered on resume
+            if (current_dither_number < COLOR_DITHER_START) {
+                imageHashMono.clearDitheredImage(current_dither_number);
+                ui->treeWidgetMono->setCurrentItemDitherFlag(false);
+            } else {
+                imageHashColor.clearDitheredImage(current_dither_number);
+                ui->treeWidgetColor->setCurrentItemDitherFlag(false);
+                invalidateSeparation();
+            }
+        }
+        renderDirty = true;
+        return;
+    }
     setMouseBusy(true);
     if(force) {
         if (current_dither_number < COLOR_DITHER_START) {
@@ -373,6 +388,7 @@ void MainWindow::saveFile(const QString &fileName) {
             tr("save as .png, .tif, .bmp or .psd"), 3000);
         return;
     }
+    renderBeforeExport();  // render control paused with changes waiting: render them first
     setMouseBusy(true);
     if (renderDpi < screenGeometry.dpi) {
         notification->showText(tr("rendering the film at %1 DPI...").arg(screenGeometry.dpi, 0, 'f', 0), 60000);
@@ -452,6 +468,11 @@ void MainWindow::loadImage(const QImage* image) {
             tr("image resolution is bigger than 4k"), 2000);
         return;
     }
+    // a new picture is rendered even with the render control paused: the previous picture's result has no place on
+    // the new scene. Whatever was held is rendered with it; the control stays paused for the next changes.
+    const bool paused = renderPaused;
+    renderPaused = false;
+    renderDirty = sourceDirtyMono = sourceDirtyColor = outputSizeDirty = false;
     // physical size from the file's resolution, then the picture at the output DPI (see mainwindow_screen.cpp)
     const QImage working = adoptNativeImage(image);
     // reset UI
@@ -488,4 +509,5 @@ void MainWindow::loadImage(const QImage* image) {
     }
     updateScreenControls();  // film size depends on the image dimensions
     treeWidgetItemChangedSlot(activeTreeWidget->currentItem());
+    renderPaused = paused;
 }

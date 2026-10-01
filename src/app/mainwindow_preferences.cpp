@@ -172,14 +172,14 @@ void MainWindow::preferencesChanged(const PreferencesDialog::Change what) {
             break;
         case PreferencesDialog::Change::PreviewQuality:
             if (!firstLoad) {
-                applyOutputSize(screenGeometry.dpi, printWidthMm, printHeightMm);  // same film, new preview
+                requestOutputSize(screenGeometry.dpi, printWidthMm, printHeightMm);  // same film, new preview
             }
             break;
         case PreferencesDialog::Change::ColorProfile:
             if (!firstLoad) {
                 // the picture as read, converted again, then the preview and every result made anew
                 nativeImage = toWorkingSpace(loadedImage).convertToFormat(QImage::Format_ARGB32);
-                applyOutputSize(screenGeometry.dpi, printWidthMm, printHeightMm);  // resamples, re-dithers
+                requestOutputSize(screenGeometry.dpi, printWidthMm, printHeightMm);  // resamples, re-dithers
             }
             break;
         case PreferencesDialog::Change::Other:
@@ -316,6 +316,7 @@ void MainWindow::copyToClipboard() {
     if (firstLoad || isDithering) {
         return;
     }
+    renderBeforeExport();  // render control paused with changes waiting: render them first
     // separating, with Preferences > Clipboard on "ask": which channel - the print, one ink, or every ink
     enum { Print = -1, Every = -2 };
     int channel = Print;

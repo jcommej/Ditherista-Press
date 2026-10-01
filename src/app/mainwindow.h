@@ -63,6 +63,8 @@ const QHash<int, int> ditherPage = {
         {ORD_IGR, 9}, {ORD_VA2, 10}, {ORD_VA4, 10}, {GRD, 11},
         {ERR_C, 12}, {ORD_VA2_C, 13}, {ORD_VA4_C, 13}, {ORD_IGR_C, 14}};
 
+class RenderGlyphButton;
+
 class MainWindow final : public QMainWindow {
     Q_OBJECT
 public:
@@ -134,6 +136,7 @@ private:
     QImage adoptNativeImage(const QImage* image);  // new picture: print size and DPI from the file
     void applyFilterScale(const QSize& working, double dpi);
     bool applyOutputSize(double dpi, double widthMm, double heightMm);
+    bool outputSizeFits(double dpi, double widthMm, double heightMm);  // false (with a notice) above EXPORT_MAX_PIXELS
     void setupScreenControls();
     void updateScreenControls();
     [[nodiscard]] bool screenUsesLpi() const;   // current algorithm has a screen cell (ordered matrix)
@@ -215,6 +218,19 @@ private:
     [[nodiscard]] QImage toWorkingSpace(const QImage& image) const;
     [[nodiscard]] QImage withProfile(QImage film) const;
     void copyToClipboard();  // Copy to Clipboard: the film as pixels, and as files, see Preferences > Clipboard
+    // render control: pause automatic rendering, then render once, see mainwindow_render.cpp
+    RenderGlyphButton* renderButton = nullptr;
+    bool renderPaused = false;      // reDither only marks renderDirty
+    bool renderDirty = false;       // something changed while paused: the result on screen is stale
+    bool renderFlushing = false;    // the held work is being done, before the one render
+    bool sourceDirtyMono = false;   // adjustments changed while paused: adjustSource still to run
+    bool sourceDirtyColor = false;
+    bool outputSizeDirty = false;   // DPI, print size or preview quality changed while paused: resample still to run
+    void setupRenderControl();
+    void renderButtonClickedSlot();
+    void renderPending();           // the held work, then one render
+    void renderBeforeExport();      // save / copy while paused: the file matches the settings shown
+    bool requestOutputSize(double dpi, double widthMm, double heightMm);  // applyOutputSize, or held while paused
     // presets, see mainwindow_presets.cpp
     std::unique_ptr<PresetStore> presetStore;
     QGroupBox* presetGroup = nullptr;
