@@ -48,6 +48,7 @@ SOURCES += \
     $$APP/presets/presetstore.cpp \
     $$APP/export/psdwriter.cpp \
     $$APP/screening/separation.cpp \
+    $$APP/screening/inksimulation.cpp \
     $$APP/viewport/graphicsview.cpp \
     $$APP/viewport/renderglyphbutton.cpp \
     $$APP/viewport/graphicspixmapitem.cpp \

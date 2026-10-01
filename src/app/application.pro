@@ -76,6 +76,7 @@ SOURCES += \
     mainwindow_render.cpp \
     mainwindow_history.cpp \
     history/sessionhistory.cpp \
+    screening/inksimulation.cpp \
     history/abandonedrenders.cpp \
     preferences/preferences.cpp \
     preferences/preferencesdialogs.cpp \
@@ -111,6 +112,7 @@ HEADERS += \
     ui_elements/mouseeventfilter.h \
     ui_elements/favoritestar.h \
     history/sessionhistory.h \
+    screening/inksimulation.h \
     history/abandonedrenders.h \
     ui_elements/pixelglyphs.h \
     ui_elements/pixelbuttonglyph.h \

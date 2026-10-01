@@ -52,7 +52,7 @@ public:
     std::function<void(const QPoint&)> moved;
     std::function<void()> released;
     explicit PaletteDragHandle(QWidget* parent) : QWidget(parent) {
-        setFixedSize(22, 22);
+        setFixedSize(30, 22);
         setCursor(Qt::OpenHandCursor);
         setToolTip(QCoreApplication::translate("PaletteEditor", "Drag to change the order of the colours - the order of the films and of the print passes"));
     }
@@ -65,12 +65,12 @@ protected:
         QPainter painter(this);
         const QColor ink(0x8a, 0x8a, 0x8a);  // discreet
         PixelGlyphs::paintHandle(&painter, QRectF(1, 6, 10, 10), ink, devicePixelRatioF());
-        if (position >= 0 && position < 3) {
+        if (position >= 0) {  // every colour shows its place in the order
             QFont font = painter.font();
             font.setPointSizeF(font.pointSizeF() * 0.8);
             painter.setFont(font);
             painter.setPen(ink);
-            painter.drawText(QRect(12, 0, 10, height()), Qt::AlignCenter, QString::number(position + 1));
+            painter.drawText(QRect(12, 0, width() - 12, height()), Qt::AlignVCenter | Qt::AlignLeft, QString::number(position + 1));
         }
     }
     void mousePressEvent(QMouseEvent* event) override {

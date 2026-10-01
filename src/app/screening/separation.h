@@ -73,11 +73,10 @@ void extendUnderFollowing(std::vector<QImage>& films, const std::vector<bool>& o
  * where no ink prints. Without overprint it is the colour dither itself. */
 QImage sideBySidePrint(const std::vector<QImage>& films, const std::vector<InkChannel>& inks);
 
-/* The print, superposed: the passes in order over white paper, as inks on paper - subtractive. Each ink lets
- * through, in linear light, the share of each channel its colour has (its transmission), and also hides a little
- * of what is under it (SUPERPOSED_HIDING), so the order of the passes shows where inks overlap. A rough
- * approximation of real inks, not a colour-exact proof. */
-constexpr double SUPERPOSED_HIDING = 0.25;
-QImage superposedPrint(const std::vector<QImage>& films, const std::vector<InkChannel>& inks);
+/* The print, superposed: the passes in order on white paper, simulated as subtractive colour - spectral
+ * Kubelka-Munk layers, see inksimulation.h. `opacity[i]` 0 (transparent ink, a filter) .. 1 (covering ink); the
+ * colour of a pixel is worked out once per combination of inks. An ink alone gives its own colour. */
+QImage superposedPrint(const std::vector<QImage>& films, const std::vector<InkChannel>& inks,
+                       const std::vector<double>& opacity);
 
 #endif // SEPARATION_H

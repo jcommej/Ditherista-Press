@@ -222,8 +222,16 @@ or a short-lived full-resolution cache for export, without duplicating them.
   no re-dither (nearest colour among all, so the dithered picture does not depend on the order - tested).
 - **Overprint** per palette ink (user's choice): the ink also prints under every enabled ink after it, no knockout
   (`extendUnderFollowing`, the exported films too). View: Print - side by side (last ink wins, = the colour dither
-  without overprint) / Print - superposed (subtractive: transmission in linear light, 25 % hiding so the order
-  shows; called an approximation in the UI). Save / Copy use the last print view chosen. Composite mode unchanged.
+  without overprint) / Print - superposed. Save / Copy use the last print view chosen. Composite mode unchanged.
+- **Superposed print = subtractive simulator** (`screening/inksimulation.*`, user: "very important"): 36 bands
+  380..730 nm; ink and paper reflectance from sRGB by Burns' LHTSS (Newton, exact round trip); each pass a
+  Kubelka-Munk layer over what is under it, scattering S X = 0.01 + 6 opacity^2 (per-ink Opacity in the ink table,
+  default 30 %), absorption solved so the ink alone on white paper gives its palette colour; back to sRGB with the
+  CIE 1931 2-degree CMFs and D65 (tables from CVRL and colour-science, 10 nm). Opacity 0 = pure filters, order
+  irrelevant; opaque = last pass dominates. Colours cached per combination of inks (95 ms for 2070 x 1528, 7 inks).
+  Paper is white; a paper / garment colour would be the next step.
+- Save As offers the PSD layouts directly (inks as layers / spot channels / both: `FileManager::currentPsdLayout`,
+  synced to the panel); Save "Separate channels + simulated print" writes the films and `name_print.ext`.
 - Custom palette question: "Don't ask again" + Preferences > Color Management. Themes on the custom page rebuild
   from the picture, locked colours kept first.
 - Postponed by the user: dot shapes (maybe with other algorithms), histogram, dot cut-off / high-cut overlay.

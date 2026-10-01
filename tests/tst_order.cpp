@@ -3,6 +3,7 @@
 #include "libdither.h"
 #include "palette/paletteeditor.h"
 #include "screening/separation.h"
+#include "screening/inksimulation.h"
 
 /* The order of the palette: the order of the films and of the print passes (overprint, side by side and
  * superposed prints), dragged in the palette editor - and never a change to the dithered picture itself */
@@ -42,22 +43,42 @@ private slots:
         QCOMPARE(print.pixel(0, 1), qRgb(255, 255, 255));  // paper
     }
 
+    void reflectanceRoundTripIsExact() {
+        // an ink alone gives back its own colour: the spectrum recovered from sRGB returns the same sRGB
+        for (const QRgb c : {qRgb(255, 0, 0), qRgb(0, 255, 0), qRgb(0, 0, 255), qRgb(255, 255, 0), qRgb(0, 0, 0),
+                             qRgb(255, 255, 255), qRgb(22, 22, 22), qRgb(216, 75, 50), qRgb(46, 95, 167), qRgb(229, 184, 58)}) {
+            const InkSimulation::Spectrum r = InkSimulation::reflectanceFromSrgb(c);
+            for (const double v : r) {
+                QVERIFY(v > 0.0 && v < 1.0);  // a physical reflectance
+            }
+            const QRgb back = InkSimulation::srgbFromReflectance(r);
+            QVERIFY2(std::abs(qRed(back) - qRed(c)) <= 1 && std::abs(qGreen(back) - qGreen(c)) <= 1 &&
+                     std::abs(qBlue(back) - qBlue(c)) <= 1, qPrintable(QString::number(c, 16) + " -> " + QString::number(back, 16)));
+        }
+    }
+
     void superposedIsSubtractiveAndFollowsTheOrder() {
-        const InkChannel yellow{"Yellow", qRgb(255, 255, 0)};
-        const InkChannel red{"Red", qRgb(255, 0, 0)};
-        // one ink alone prints its own colour
-        const QImage alone = superposedPrint({film("#")}, {yellow});
-        QCOMPARE(alone.pixel(0, 0), qRgb(255, 255, 0));
-        // both on the same pixel: darker than either (inks absorb, they do not add light)...
-        const QImage yellowThenRed = superposedPrint({film("#"), film("#")}, {yellow, red});
-        const QImage redThenYellow = superposedPrint({film("#"), film("#")}, {red, yellow});
-        QVERIFY(qGreen(yellowThenRed.pixel(0, 0)) < 255 && qGreen(redThenYellow.pixel(0, 0)) < 255);
-        QCOMPARE(qBlue(yellowThenRed.pixel(0, 0)), 0);
-        // ...and the last pass shows more: the order of the palette changes the print where inks overlap
-        QVERIFY(yellowThenRed.pixel(0, 0) != redThenYellow.pixel(0, 0));
-        QVERIFY(qGreen(redThenYellow.pixel(0, 0)) > qGreen(yellowThenRed.pixel(0, 0)));  // yellow on top
-        // no ink: paper
-        QCOMPARE(superposedPrint({film(".")}, {yellow}).pixel(0, 0), qRgb(255, 255, 255));
+        const InkChannel yellow{"Yellow", qRgb(255, 220, 0)};
+        const InkChannel red{"Red", qRgb(200, 30, 30)};
+        const auto pixel = [](const std::vector<InkChannel>& inks, const std::vector<double>& opacity) {
+            return superposedPrint({film("#"), film("#")}, inks, opacity).pixel(0, 0);
+        };
+        // one ink alone prints its own colour, whatever its opacity
+        for (const double opacity : {0.0, 0.3, 1.0}) {
+            const QRgb alone = superposedPrint({film("#")}, {yellow}, {opacity}).pixel(0, 0);
+            QVERIFY(std::abs(qRed(alone) - 255) <= 1 && std::abs(qGreen(alone) - 220) <= 1 && qBlue(alone) <= 1);
+        }
+        QCOMPARE(superposedPrint({film(".")}, {yellow}, {0.3}).pixel(0, 0), qRgb(255, 255, 255));  // paper
+        // transparent inks are filters: darker than either, and the order hardly matters
+        const QRgb filterYR = pixel({yellow, red}, {0.0, 0.0});
+        const QRgb filterRY = pixel({red, yellow}, {0.0, 0.0});
+        QVERIFY(qGreen(filterYR) < 30 && qRed(filterYR) < 200);  // subtractive: no light is added
+        QVERIFY(std::abs(qRed(filterYR) - qRed(filterRY)) <= 3 && std::abs(qGreen(filterYR) - qGreen(filterRY)) <= 12);
+        // covering inks: the last pass shows most - the palette order changes the print
+        const QRgb redOnTop = pixel({yellow, red}, {0.8, 0.8});
+        const QRgb yellowOnTop = pixel({red, yellow}, {0.8, 0.8});
+        QVERIFY(qGreen(yellowOnTop) > 150);   // yellow over red: mostly yellow
+        QVERIFY(qGreen(redOnTop) < 60);       // red over yellow: mostly red
     }
 
     void paletteOrderDoesNotChangeTheDither() {

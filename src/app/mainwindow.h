@@ -159,6 +159,7 @@ private:
         double lpi = 0.0;    // 0 = follow the Screen panel's LPI
         double angle = 0.0;  // screen angle in degrees
         bool overprint = false;  // palette ink: also prints under the inks after it (no knockout)
+        double opacity = 0.3;    // palette ink, superposed print: 0 transparent .. 1 covering
     };
     std::map<int, std::vector<ChannelSettings>> channelSettings;  // per separation mode, kept across mode changes
     int renderChannel = -1;          // ink being rendered, for its LPI and angle; -1 = composite

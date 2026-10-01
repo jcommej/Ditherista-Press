@@ -19,7 +19,7 @@ class PaletteDragHandle;
  * (see mainwindow_palette_editor.cpp) and calls setPalette with the result. Rows are updated in place, so the
  * field or button that sent a signal is never destroyed while its signal is being handled.
  * The order of the rows is the order of the palette - of the films and of the print passes: drag a row by its
- * handle to move its colour; the first three positions show their number.
+ * handle to move its colour; every row shows its position.
  */
 class PaletteEditor final : public QWidget {
     Q_OBJECT

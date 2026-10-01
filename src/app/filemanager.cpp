@@ -32,7 +32,7 @@ bool FileManager::getOpenFileName(QString* fileName, const QString& defaultFolde
 
 QString FileManager::currentExtension() const {
     return currentFilter == pngFilter() || currentFilter.isEmpty() ? "png"
-           : currentFilter == bmpFilter() ? "bmp" : currentFilter == psdFilter() ? "psd" : "tif";
+           : currentFilter == bmpFilter() ? "bmp" : currentPsdLayout() >= 0 ? "psd" : "tif";
 }
 
 QString FileManager::fileSave(const bool saveAs, QString suggestedFileName, const QString& defaultFolder) {
@@ -53,7 +53,8 @@ QString FileManager::fileSave(const bool saveAs, QString suggestedFileName, cons
     } else {
         suggestedFileName = currentFileName;
     }
-    const QString filters = QStringList({pngFilter(), tiffFilter(), tiffPackBitsFilter(), bmpFilter(), psdFilter()}).join(";;");
+    const QString filters = QStringList({pngFilter(), tiffFilter(), tiffPackBitsFilter(), bmpFilter(), psdFilter(),
+                                         psdSpotChannelsFilter(), psdLayersAndSpotChannelsFilter()}).join(";;");
     QString selected = currentFilter.isEmpty() ? pngFilter() : currentFilter;
     const QString fileName = QFileDialog::getSaveFileName((QWidget*)parent(),
                                                     tr("Save Film"), suggestedFileName,
@@ -72,7 +73,21 @@ QString FileManager::pngFilter() {
 }
 
 QString FileManager::psdFilter() {
-    return tr("Photoshop PSD, separations as spot channels (*.psd)");
+    return tr("Photoshop PSD, inks as layers (*.psd)");
+}
+
+QString FileManager::psdSpotChannelsFilter() {
+    return tr("Photoshop PSD, inks as spot channels (*.psd)");
+}
+
+QString FileManager::psdLayersAndSpotChannelsFilter() {
+    return tr("Photoshop PSD, inks as layers and spot channels (*.psd)");
+}
+
+int FileManager::currentPsdLayout() const {
+    // PsdInkLayout: SpotChannels 0, Layers 1, LayersAndSpotChannels 2
+    return currentFilter == psdFilter() ? 1 : currentFilter == psdSpotChannelsFilter() ? 0
+           : currentFilter == psdLayersAndSpotChannelsFilter() ? 2 : -1;
 }
 
 QString FileManager::bmpFilter() {
