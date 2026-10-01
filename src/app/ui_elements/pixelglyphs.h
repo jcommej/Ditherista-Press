@@ -31,6 +31,9 @@ constexpr double CROSS_MS = 300.0;
 void paintStatusDot(QPainter* painter, const QRectF& box, double fill, const QColor& empty, const QColor& full,
                     double devicePixelRatio);
 bool statusDotPixel(int x, int y, double fill);  // as painted: is pixel (x, y) drawn at this fill
+
+// drag handle of the palette rows, three bars of 5 x 1 pixels
+void paintHandle(QPainter* painter, const QRectF& box, const QColor& ink, double devicePixelRatio);
 constexpr double STATUS_MS = 420.0;
 }
 

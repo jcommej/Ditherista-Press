@@ -66,6 +66,13 @@ Everything compiles with **`-Werror`**: a warning fails the build.
 - **`GraphicsView` has a private member called `scene`** that hides `QGraphicsView::scene()`; go through the base.
 - **Ordered dithers put one dark pixel in 64 on pure white** (smallest Bayer threshold lands exactly on 0.5).
   Separated films are cleaned (`cleanExtremes`); the composite keeps upstream behaviour for now.
+- **PowerShell and the build**: `build.ps1` runs with `$ErrorActionPreference = "Stop"`, so `2>&1`, `*>` or
+  `2>$null` on it turn make's stderr warnings into a failure; pipe stdout only (`| Select-String "error:"`,
+  `| Out-Null`). With `make` directly, `2>$null` hides the compile errors: use `2>&1 | Select-String " error"`.
+  `Set-Content -Encoding utf8` writes a BOM (it broke a harness inserted into `main.cpp`): write bytes, or use
+  `[IO.File]::WriteAllText(path, text, (New-Object Text.UTF8Encoding($false)))`.
+- **`TestNavigation::smoothWheelZoomsInAroundThePointer` is timing-sensitive**: it failed once in a full run and
+  passed 3 times out of 3 on rerun. Rerun before suspecting a change.
 
 ### Testing the real app without touching the user's keyboard
 Add a temporary harness to `main.cpp` (a `QTimer` chain that finds widgets with `findChildren`, emits
@@ -73,7 +80,17 @@ Add a temporary harness to `main.cpp` (a `QTimer` chain that finds widgets with 
 `loadPresetNamed`; make `saveFile` a slot temporarily), run the app with a picture argument, `w.grab()` to PNG,
 then **remove the harness before committing** (`grep HARNESS` must find nothing). For crashes, build a copy with
 `qmake CONFIG+=release CONFIG+=force_debug_info` in a separate folder and run it under
-`C:\Qt\Tools\mingw1310_64\bin\gdb.exe -batch -ex run -ex bt`. Independent PSD check: `psd-tools` in a venv.
+`C:\Qt\Tools\mingw1310_64\bin\gdb.exe -batch -ex run -ex bt`. Independent PSD check: `psd-tools` in a venv
+(`python -m venv psdenv` then `pip install psd-tools numpy`; `psd.composite(force=True)` composes the layers,
+`psd.topil()` gives the document's own image).
+How it was done in the 2026-10-01/02 sessions, without ever touching the user's running instance or `dist`:
+keep the harness text in a scratch file and insert it in `main.cpp` with a byte-level script (CRLF kept), add
+`Q_INVOKABLE` to `saveFile` the same way, run `make app_build` (compiles, does not install), copy
+`build\release\application.exe` into a scratch copy of `dist\ditherista` and run it there, then put the sources
+back and check `git status`. The harness writes to the user's `%APPDATA%\ditherista\preferences.ini` (favourites,
+recent files): back it up before and restore it after. A copy started without a picture never quits: stop it
+by its path. Then `build.ps1` again so `dist` holds the clean build (compare its hash with
+`build\release\application.exe`, and look for no `HARNESS_OUT` string in it).
 
 ## 4. Architecture
 
@@ -136,6 +153,7 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `ui_elements/pixelglyphs.*` | square-pixel glyphs snapped to device pixels: padlock (6×7, open = shackle up one pixel, left leg out), reset cross (7×7, pixels scatter and come back), dithered status dot (8×8, hollow ring → full, fills left to right) |
 | `ui_elements/pixelbuttonglyph.*` | `PixelButtonGlyph::attach`: the glyph over an existing button (transparent to the mouse, icon removed); Lock follows `toggled`, Cross animates on `clicked` without delaying it |
 | `treewidget.*` (+ delegate) | favourites in the ditherer lists: star left of the status dot, click on it never selects (not passed to the base press); after the animation `rebuildFavoriteRows` puts a copy of each favourite on top (`ROLE_FAVORITE_COPY`), the ditherer staying at its place too; selection and rows on screen kept; thin line under the copies. Dithered flag per ditherer for the original and its copy (`setDitherFlag`, animated, `doneFill`); the delegate finds the selected row by `ROLE_NATURAL_ROW` |
+| `palette/palettethemes.h` | palette themes Ristretto 3 / Serré 4 / Filtre 7 / Assemblage 11 / Grand Cru 32: settings of the existing reduction (count, method, black and white kept); the Theme row on the reduced page shows the theme the fields match, else Custom |
 | `history/sessionhistory.*` | undo stack of session states (compact JSON, no limit), redo dropped by a new change |
 | `history/abandonedrenders.*` | stopped renders left running: frees deferred until the last one ends |
 | `mainwindow_history.cpp` | Edit > Undo / Redo: `captureSession` (preset sections + print size and padlock + both tabs' ditherer and adjustments + every ditherer's settings), recorded 120 ms after a change (renders and mouse/key releases schedule it), `restoreSession` applies only what differs (selection only = cached results reused; otherwise `applyPreset`) |
@@ -212,6 +230,30 @@ or a short-lived full-resolution cache for export, without duplicating them.
   interrupted, so the thread finishes in the background and is discarded - then the change that started it is
   undone (back to the last recorded state) and the control **pauses**. A render asked from Pause keeps its settings.
   Export renders and the colour picker's live preview cannot be stopped.
+- **Palette themes** (user: "se baser sur l'existant, simplicité"): no new algorithm, no stored theme - a theme only fills
+  the reduced palette's fields, so presets and undo carry it for free. The reduction combo mapped index + 1 upstream
+  (Median Cut ran Wu, Wu ran KD-Tree, KD-Tree ran Median Cut): fixed, the method shown is the one used.
+- **Palette order** = order of the films (names `01_RRGGBB`, files, PSD channels and layers - 01 just above Paper) and
+  of the print passes. One source of truth: the palette's own list; dragging a row by its pixel handle
+  (`PaletteEditor`, numbers on the first 3) moves the colour, its ink settings move with it (`movePaletteColour`),
+  no re-dither (nearest colour among all, so the dithered picture does not depend on the order - tested).
+- **Overprint** per palette ink (user's choice): the ink also prints under every enabled ink after it, no knockout
+  (`extendUnderFollowing`, the exported films too). View: Print - side by side (last ink wins, = the colour dither
+  without overprint) / Print - superposed. Save / Copy use the last print view chosen. Composite mode unchanged.
+- **Superposed print = subtractive simulator** (`screening/inksimulation.*`, user: "very important"): 36 bands
+  380..730 nm; ink and paper reflectance from sRGB by Burns' LHTSS (Newton, exact round trip); each pass a
+  Kubelka-Munk layer over what is under it, scattering S X = 0.01 + 6 opacity^2 (per-ink Opacity in the ink table,
+  default 30 %), absorption solved so the ink alone on white paper gives its palette colour; back to sRGB with the
+  CIE 1931 2-degree CMFs and D65 (tables from CVRL and colour-science, 10 nm). Opacity 0 = pure filters, order
+  irrelevant; opaque = last pass dominates. Colours cached per combination of inks (95 ms for 2070 x 1528, 7 inks).
+  Paper is white; a paper / garment colour would be the next step.
+- PSD layers of palette inks follow the print view (`printLayers`, Normal blend): side by side = flat ink colours;
+  superposed = progressive proof, each pass holding the colour of the print after it (all layers = the simulation,
+  checked to the pixel with psd-tools). Without Overprint palette inks never overlap: a notice says so.
+- Save As offers the PSD layouts directly (inks as layers / spot channels / both: `FileManager::currentPsdLayout`,
+  synced to the panel); Save "Separate channels + simulated print" writes the films and `name_print.ext`.
+- Custom palette question: "Don't ask again" + Preferences > Color Management. Themes on the custom page rebuild
+  from the picture, locked colours kept first.
 - Postponed by the user: dot shapes (maybe with other algorithms), histogram, dot cut-off / high-cut overlay.
 - Known open question: matrix smoothing for round dots / more grey levels at high DPI was proposed and
   postponed by the user ("je valide pour le moment").
@@ -240,8 +282,35 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | — Rename to Ditherista Press; render control (pause / render once) | to test (`feature/rename-press`, `feature/render-pause`) |
 | — Favourite ditherers (stars), pixel controls (padlock, reset cross, status dot) | to test (`feature/favorite-ditherers`, from `feature/render-pause`) |
 | — Global undo / redo, stopping a render | to test (`feature/undo-stop`, from `feature/favorite-ditherers`) |
+| — Palette themes; custom palette question, themes on custom, colour order, overprint / superposed print | to test (`feature/palette-presets`, from `feature/undo-stop`) |
 
-### Next objectives (as of 2026-10-01)
+### Done in the 2026-10-01/02 sessions (branches stacked, none merged or pushed yet)
+
+`feature/rename-press` -> `feature/render-pause` -> `feature/favorite-ditherers` -> `feature/undo-stop` ->
+`feature/palette-presets`, each from the previous one. The user tested along the way; merge them in this order
+into `feature/screenprinting-workflow` (`--no-ff`) and push once they say so ("valide").
+- Rename to Ditherista Press (display name only).
+- Render control: pause / render once, breathing during every render, stop with the button or Esc.
+- Favourite ditherers (diamond star, copies on top); pixel padlock, reset cross, status dot.
+- Undo / redo of every setting (Ctrl+Z / Ctrl+Y), one history per picture.
+- Palette themes (reduced and custom pages), "Don't ask again" for the custom palette question.
+- Palette order by drag and drop (numbered rows) = order of films, files, PSD and print passes; Overprint and
+  Opacity per palette ink; print views side by side / superposed; spectral Kubelka-Munk simulator; PSD layers
+  that follow the print view (progressive proof when superposed); PSD layouts in Save As; Save "Separate
+  channels + simulated print".
+
+To check with the user: the two new Save options were only exercised in the harness through `saveFile`, not
+through the Save As dialog itself; the animation of the padlock and of the status dot was never captured mid-way.
+
+### Next objectives (as of 2026-10-02)
+
+Proposed, not decided yet (from this session):
+- **Paper / garment colour for the superposed print** (white only now): kraft paper, a dark t-shirt, and with it
+  the white underbase. The simulator takes any paper spectrum already (`InkSimulation::print(..., paper)`).
+- The **CMYK simulated print** still multiplies inks; it could use the same Kubelka-Munk simulator.
+- **Near-duplicate colours** from "Include brightest / darkest": Filtre gave #FFFFFF (paper, off) and #FEFEFE (an
+  ink): offer to merge colours closer than a threshold.
+- The render input gate drops clicks made during a render (they used to be replayed after it); fine so far.
 
 To check in real use (could not be tested here): pinch to zoom on a real touchpad / touch screen; the feel of the
 joystick and inertia (constants at the top of `viewport/graphicsview.cpp`); pasting a Copy to Clipboard into

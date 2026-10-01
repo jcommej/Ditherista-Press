@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include "consts.h"
 #include <QScopeGuard>
+#include <QSpinBox>
+#include <cmath>
 #include "export/filmwriter.h"
 #include "export/psdwriter.h"
 #include <QCheckBox>
@@ -44,9 +46,12 @@ void MainWindow::setupSeparationControls() {
     separationExportCombo = new QComboBox(separationGroup);
     separationExportCombo->addItem(tr("Separate channels"));
     separationExportCombo->addItem(tr("Simulated composite"));
-    separationExportCombo->setToolTip(tr("Save: one 1-bit file per ink (picture_Cyan.tif, ...), or the simulated "
-                                         "print as a single colour image.\nPSD always holds every ink as a spot "
-                                         "channel in one file."));
+    separationExportCombo->addItem(tr("Separate channels + simulated print"));
+    separationExportCombo->setToolTip(tr("Save: one 1-bit file per ink (picture_Cyan.tif, picture_01_E03C28.tif...), "
+                                         "the simulated print as a single colour image, or both (the print as "
+                                         "picture_print). The print is the one View shows: side by side or "
+                                         "superposed.\nPSD holds every ink in one file, as layers, spot channels or "
+                                         "both: pick it in Save As, or below."));
     separationPsdLayoutCombo = new QComboBox(separationGroup);
     separationPsdLayoutCombo->addItem(tr("Layers"), static_cast<int>(PsdInkLayout::Layers));
     separationPsdLayoutCombo->addItem(tr("Spot channels"), static_cast<int>(PsdInkLayout::SpotChannels));
@@ -109,7 +114,16 @@ void MainWindow::refreshSeparationInks() {
     const int view = separationViewCombo->currentIndex();
     QSignalBlocker blocker(separationViewCombo);
     separationViewCombo->clear();
-    separationViewCombo->addItem(tr("Simulated print"));
+    if (separationMode == SeparationMode::Palette) {
+        separationViewCombo->addItem(tr("Print - side by side"));
+        separationViewCombo->setItemData(0, tr("Every colour as dithered, next to each other, nothing mixed"), Qt::ToolTipRole);
+        separationViewCombo->addItem(tr("Print - superposed"));
+        separationViewCombo->setItemData(1, tr("The passes in palette order, inks over paper (subtractive): where inks "
+                                               "overprint they mix. An approximation, not a colour proof"),
+                                         Qt::ToolTipRole);
+    } else {
+        separationViewCombo->addItem(tr("Simulated print"));
+    }
     for (const InkChannel& channel : separationInks()) {
         separationViewCombo->addItem(tr("%1 film").arg(channel.name));
     }
@@ -134,7 +148,16 @@ void MainWindow::separationModeChangedSlot(int) {
     }
 }
 
-void MainWindow::separationViewChangedSlot(int) {
+void MainWindow::separationViewChangedSlot(const int view) {
+    if (separationMode == SeparationMode::Palette && view >= 0 && view < separationFilmOffset()) {
+        printSuperposed = view == 1;  // the print Save and Copy write
+        const std::vector<ChannelSettings>& inks = currentChannelSettings();
+        if (printSuperposed && std::none_of(inks.begin(), inks.end(), [](const ChannelSettings& ink) {
+                return ink.enabled && ink.overprint; })) {
+            notification->showText(tr("Superposed: palette inks only overlap where one is set to Overprint\n"
+                                      "(ink table) - without it every pixel gets a single ink"), 5000);
+        }
+    }
     if (!firstLoad && separationActive()) {
         if (renderPaused) {
             renderDirty = true;  // films may be stale: shown once the render control resumes
@@ -158,8 +181,10 @@ std::vector<QImage> MainWindow::renderSeparation(const QImage& working, const do
     });
     if (separationMode == SeparationMode::Palette) {
         std::vector<bool> wanted;
+        std::vector<bool> overprint;  // in palette order: the order of the passes
         for (const ChannelSettings& ink : settings) {
             wanted.push_back(ink.enabled);
+            overprint.push_back(ink.overprint);
         }
         std::vector<QImage> films;
         if (preview) {  // the Composite view's own dither, cached
@@ -167,6 +192,7 @@ std::vector<QImage> MainWindow::renderSeparation(const QImage& working, const do
                 ditherColorInto(imageHashColor);
             }
             films = splitByPalette(*imageHashColor.getDitheredImage(current_dither_number), paletteColours(), wanted);
+            extendUnderFollowing(films, overprint);
         } else {
             ImageHashColor film;
             film.copyAdjustmentsFrom(imageHashColor);
@@ -175,6 +201,7 @@ std::vector<QImage> MainWindow::renderSeparation(const QImage& working, const do
             film.setSourceImage(&working, true);
             ditherColorInto(film);  // same palette as the preview
             films = splitByPalette(*film.getDitheredImage(current_dither_number), paletteColours(), wanted);
+            extendUnderFollowing(films, overprint);
         }
         renderDpi = previousDpi;
         return films;
@@ -210,16 +237,48 @@ std::vector<QImage> MainWindow::renderSeparation(const QImage& working, const do
     return films;
 }
 
+int MainWindow::separationFilmOffset() const {
+    return separationMode == SeparationMode::Palette ? 2 : 1;  // the two print views, or the simulated print
+}
+
+QImage MainWindow::separationPrint(const std::vector<QImage>& films) const {
+    /* the simulated print: palette inks side by side or superposed (the last chosen view), CMYK multiplied on
+     * white, RGB added on black */
+    if (separationMode == SeparationMode::Palette) {
+        return printSuperposed ? superposedPrint(films, separationInks(), paletteOpacities())
+                               : sideBySidePrint(films, separationInks());
+    }
+    return compositeFromFilms(films, separationInks(), separationMode == SeparationMode::RGB);
+}
+
+std::vector<double> MainWindow::paletteOpacities() const {
+    std::vector<double> opacity;
+    if (const auto inks = channelSettings.find(static_cast<int>(SeparationMode::Palette)); inks != channelSettings.end()) {
+        for (const ChannelSettings& ink : inks->second) {
+            opacity.push_back(ink.opacity);
+        }
+    }
+    return opacity;
+}
+
+std::vector<QImage> MainWindow::separationLayers(const std::vector<QImage>& films) const {
+    if (separationMode != SeparationMode::Palette) {
+        return {};
+    }
+    return printLayers(films, separationInks(), paletteOpacities(), printSuperposed);
+}
+
 QImage MainWindow::separationView(const std::vector<QImage>& films) const {
     /* what the View selector shows: the simulated print, or one film */
     const int view = separationViewCombo->currentIndex();
-    if (view <= 0 || view > static_cast<int>(films.size())) {
-        const QImage print = compositeFromFilms(films, separationInks(), separationMode == SeparationMode::RGB);
+    const int offset = separationFilmOffset();
+    if (view < offset || view - offset >= static_cast<int>(films.size())) {
+        const QImage print = separationPrint(films);
         if (!print.isNull()) {
             return print;
         }
-    } else if (!films[static_cast<size_t>(view - 1)].isNull()) {
-        return films[static_cast<size_t>(view - 1)];
+    } else if (!films[static_cast<size_t>(view - offset)].isNull()) {
+        return films[static_cast<size_t>(view - offset)];
     }
     QImage blank(previewImage.size(), QImage::Format_RGB32);  // every ink disabled, or this one
     blank.fill(Qt::white);
@@ -270,13 +329,22 @@ bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* wr
     const bool additive = separationMode == SeparationMode::RGB;
     if (suffix == "psd") {  // one document: the print (or white) plus every ink as a spot channel
         std::vector<PsdSpotChannel> spots;
+        const std::vector<QImage> layers = separationLayers(films);  // palette inks: as the print view shows them
         for (size_t i = 0; i < films.size(); i++) {
             if (!films[i].isNull()) {
-                spots.push_back({channels[i].name, channels[i].ink, films[i]});
+                spots.push_back({channels[i].name, channels[i].ink, films[i], i < layers.size() ? layers[i] : QImage()});
+            }
+        }
+        // the layout picked in the Save As dialog, else the one of the Separation panel
+        const int chosen = fileManager.currentPsdLayout();
+        if (chosen >= 0) {
+            const int index = separationPsdLayoutCombo->findData(chosen);
+            if (index >= 0) {
+                whileBlocking(separationPsdLayoutCombo)->setCurrentIndex(index);  // the panel shows what was saved
             }
         }
         const PsdInkLayout layout = static_cast<PsdInkLayout>(separationPsdLayoutCombo->currentData().toInt());
-        QImage composite = withProfile(compositeFromFilms(films, channels, additive));  // spots stay profile-less
+        QImage composite = withProfile(separationPrint(films));  // spots stay profile-less
         if (layout == PsdInkLayout::SpotChannels && !separationPsdCompositeCheck->isChecked()) {
             composite.fill(Qt::white);  // with layers, the image must match what the layers show
         }
@@ -284,8 +352,15 @@ bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* wr
         return *written == 1;
     }
     if (separationExportCombo->currentIndex() == 1) {
-        *written = write(fileName, withProfile(compositeFromFilms(films, channels, additive))) ? 1 : 0;
+        *written = write(fileName, withProfile(separationPrint(films))) ? 1 : 0;
         return *written == 1;
+    }
+    if (separationExportCombo->currentIndex() == 2) {  // the films, and the print as shown in View next to them
+        const QString print = info.dir().filePath(QString("%1_print.%2").arg(info.completeBaseName(), info.suffix()));
+        if (!write(print, withProfile(separationPrint(films)))) {
+            return false;
+        }
+        (*written)++;
     }
     for (size_t i = 0; i < films.size(); i++) {
         if (films[i].isNull()) {
@@ -358,7 +433,16 @@ void MainWindow::rebuildChannelRows() {
     grid->setColumnStretch(1, 1);
     grid->setColumnStretch(2, 1);
     grid->addWidget(new QLabel(tr("Ink"), channelRows), 0, 0);
-    if (!palette) {
+    if (palette) {
+        QLabel* header = new QLabel(tr("Overprint"), channelRows);
+        header->setToolTip(tr("The ink also prints under the inks that come after it in the palette, without knockout: "
+                              "they overprint it, and the superposed print shows them mixing"));
+        grid->addWidget(header, 0, 1, Qt::AlignRight);
+        QLabel* opacityHeader = new QLabel(tr("Opacity"), channelRows);
+        opacityHeader->setToolTip(tr("For the superposed print: how much the ink hides what is under it, from a "
+                                     "transparent ink (a filter) to a covering one"));
+        grid->addWidget(opacityHeader, 0, 2, Qt::AlignRight);
+    } else {
         grid->addWidget(new QLabel(tr("LPI"), channelRows), 0, 1);
         grid->addWidget(new QLabel(tr("Angle"), channelRows), 0, 2);
     }
@@ -380,7 +464,32 @@ void MainWindow::rebuildChannelRows() {
             QPixmap swatch(12, 12);
             swatch.fill(QColor::fromRgb(inks[i].ink));
             enabled->setIcon(QIcon(swatch));
-            grid->addWidget(enabled, row, 0, 1, 3);
+            grid->addWidget(enabled, row, 0);
+            QCheckBox* overprint = new QCheckBox(channelRows);
+            overprint->setChecked(settings[i].overprint);
+            overprint->setToolTip(tr("%1 also prints under the inks after it (no knockout)").arg(inks[i].name));
+            grid->addWidget(overprint, row, 1, Qt::AlignRight);
+            connect(overprint, &QCheckBox::toggled, this, [this, i, changed](const bool on) {
+                currentChannelSettings()[i].overprint = on;
+                changed();
+            });
+            QSpinBox* opacity = new QSpinBox(channelRows);
+            opacity->setRange(0, 100);
+            opacity->setSuffix(" %");
+            opacity->setKeyboardTracking(false);
+            opacity->setValue(static_cast<int>(std::lround(settings[i].opacity * 100.0)));
+            opacity->setToolTip(tr("%1 in the superposed print: 0 % a transparent ink that tints what is under it, "
+                                   "100 % a covering ink that hides it").arg(inks[i].name));
+            opacity->setMinimumWidth(CHANNEL_FIELD_MIN_WIDTH);
+            opacity->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+            grid->addWidget(opacity, row, 2);
+            connect(opacity, &QSpinBox::valueChanged, this, [this, i](const int value) {
+                currentChannelSettings()[i].opacity = value / 100.0;
+                if (!firstLoad && separationActive()) {
+                    showSeparation();  // the films stay; only the print is simulated again
+                }
+                scheduleHistoryCapture();
+            });
             continue;
         }
         QDoubleSpinBox* lpi = new QDoubleSpinBox(channelRows);

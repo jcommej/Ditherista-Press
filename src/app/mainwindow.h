@@ -158,6 +158,8 @@ private:
         bool enabled = true;
         double lpi = 0.0;    // 0 = follow the Screen panel's LPI
         double angle = 0.0;  // screen angle in degrees
+        bool overprint = false;  // palette ink: also prints under the inks after it (no knockout)
+        double opacity = 0.3;    // palette ink, superposed print: 0 transparent .. 1 covering
     };
     std::map<int, std::vector<ChannelSettings>> channelSettings;  // per separation mode, kept across mode changes
     int renderChannel = -1;          // ink being rendered, for its LPI and angle; -1 = composite
@@ -175,11 +177,17 @@ private:
     PaletteHistory paletteHistory;
     std::vector<bool> customLocks;  // locks of customPalette's colours; ignored if the sizes differ
     void setupPaletteEditor();
+    // palette themes of the reduced palette, see mainwindow_palette.cpp and palette/palettethemes.h
+    QComboBox* paletteThemeCombo = nullptr;
+    void setupPaletteThemes();
+    void updatePaletteThemeCombo();  // the theme the fields match, or Custom
+    void rebuildCustomPalette(const struct PaletteTheme& theme);  // custom page: from the picture, locks kept
     [[nodiscard]] PaletteEntries currentPaletteEntries() const;  // the palette the colour ditherers use
     // one undoable step: records the current palette, runs `beforeApply` (e.g. to realign the separation's
     // inks), applies; nothing happens if the user cancels replacing an earlier custom palette
     void editPalette(const PaletteEntries& edited, const std::function<void()>& beforeApply = {});
     void applyPaletteEntries(const PaletteEntries& entries);  // becomes the custom palette, then re-dither
+    void movePaletteColour(int from, int to);  // the order of the films and print passes; no re-dither
     void undoPalette(bool redo);  // one step back or forward, from the Edit menu or the colour picker
     // colour picker session on one palette colour: live low-resolution preview while the colour moves, the full
     // preview and one undo step once it rests (see mainwindow_palette_editor.cpp)
@@ -281,6 +289,13 @@ private:
     std::vector<QImage> renderSeparation(const QImage& working, double dpi, double upscale, bool preview);
     [[nodiscard]] QImage separationView(const std::vector<QImage>& films) const;
     void showSeparation();
+    // palette separations: the print side by side (colours as dithered) or superposed (passes in order, subtractive)
+    bool printSuperposed = false;   // the print view last chosen; Save and Copy use it
+    [[nodiscard]] int separationFilmOffset() const;  // View combo entries before the first film
+    [[nodiscard]] QImage separationPrint(const std::vector<QImage>& films) const;
+    [[nodiscard]] std::vector<double> paletteOpacities() const;
+    // PSD layers of the palette inks, following the print view (empty for CMYK / RGB: Multiply / Screen)
+    [[nodiscard]] std::vector<QImage> separationLayers(const std::vector<QImage>& films) const;
     std::vector<QImage> separationFilmsAtOutput();
     bool saveSeparation(const QString& fileName, QString* error, int* written);
 

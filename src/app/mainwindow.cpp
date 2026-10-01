@@ -52,6 +52,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     setupToneControls();    // shadows / midtones / highlights / blur / denoise
     setupPresetControls();  // Load / Save / Delete, at the top of the settings
     setupPaletteEditor();   // editable colour list of the Palette tab, and palette undo
+    setupPaletteThemes();   // Ristretto .. Grand Cru on the reduced palette page
     setupPreferences();     // Preferences menu, 1:1 and Fit buttons
     setupRenderControl();   // pause / render button in the preview's corner
     setupSettingsScroll();  // after every panel exists: they move into one scroll area

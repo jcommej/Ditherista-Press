@@ -64,4 +64,27 @@ QImage compositeFromFilms(const std::vector<QImage>& films, const std::vector<In
 std::vector<QImage> splitByPalette(const QImage& dithered, const std::vector<QRgb>& palette,
                                    const std::vector<bool>& wanted);
 
+/* Palette films in print order (the order of the palette: film 0 is the first pass).
+ * Overprint: an ink whose `overprint` is set also prints under every enabled ink that follows it - no knockout
+ * there - so its film covers their areas too. Null films (disabled inks) are left alone and extend nothing. */
+void extendUnderFollowing(std::vector<QImage>& films, const std::vector<bool>& overprint);
+
+/* The print, side by side: every pixel takes the colour of the last ink printed there, nothing mixes; on white
+ * where no ink prints. Without overprint it is the colour dither itself. */
+QImage sideBySidePrint(const std::vector<QImage>& films, const std::vector<InkChannel>& inks);
+
+/* The print, superposed: the passes in order on white paper, simulated as subtractive colour - spectral
+ * Kubelka-Munk layers, see inksimulation.h. `opacity[i]` 0 (transparent ink, a filter) .. 1 (covering ink); the
+ * colour of a pixel is worked out once per combination of inks. An ink alone gives its own colour. */
+QImage superposedPrint(const std::vector<QImage>& films, const std::vector<InkChannel>& inks,
+                       const std::vector<double>& opacity);
+
+/* One layer per pass of a palette print, to stack in order (Normal blend, transparent where the pass does not
+ * print; null for a null film). Side by side: the ink's own colour - the last pass wins, as sideBySidePrint.
+ * Superposed: a progressive proof - where a pass prints, the colour of the print after that pass (superposedPrint
+ * of the passes so far), so all the layers show the superposed print, and hiding the top ones the print after
+ * fewer passes. */
+std::vector<QImage> printLayers(const std::vector<QImage>& films, const std::vector<InkChannel>& inks,
+                                const std::vector<double>& opacity, bool superposed);
+
 #endif // SEPARATION_H

@@ -29,6 +29,9 @@ struct PsdSpotChannel {
     QString name;
     QRgb ink;      // display colour
     QImage film;   // black = ink, white = clear; same size as the composite
+    // as a layer: null = the ink colour where the film has ink, Multiply (Screen for RGB); else these pixels,
+    // shown where their alpha is, Normal - e.g. a pass of the superposed print (screening/separation.h)
+    QImage layer = QImage();
 };
 
 enum class PsdInkLayout { SpotChannels, Layers, LayersAndSpotChannels };

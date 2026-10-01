@@ -4,6 +4,7 @@
 #include "palette/colourpickerdialog.h"
 #include "palette/labpanel.h"
 #include "color/colorspace.h"
+#include "palette/palettethemes.h"
 
 /* Tests for palette/palettemodel.h: limits, locks, randomizing, the colour to add, files and undo. */
 
@@ -266,6 +267,35 @@ private slots:
     }
 };
 
+/* Palette themes: settings of the existing reduction, from few colours to many (palette/palettethemes.h) */
+class TestPaletteThemes : public QObject {
+    Q_OBJECT
+private slots:
+    void themesGoFromFewToManyColours() {
+        QCOMPARE(PALETTE_THEMES.size(), size_t(5));
+        const int expected[] = {3, 4, 7, 11, 32};
+        for (size_t i = 0; i < PALETTE_THEMES.size(); i++) {
+            const PaletteTheme& theme = PALETTE_THEMES[i];
+            QCOMPARE(theme.colours, expected[i]);
+            QVERIFY(theme.colours >= 2 && theme.colours <= 256);  // the reduction's limits
+            QVERIFY(theme.reduction >= 0 && theme.reduction <= 2);  // Median Cut, Wu, KD-Tree
+            QVERIFY(!theme.keepBlackWhite || theme.colours > 2);  // black and white leave room for colours
+        }
+    }
+
+    void fieldsShowTheMatchingTheme() {
+        for (size_t i = 0; i < PALETTE_THEMES.size(); i++) {
+            const PaletteTheme& t = PALETTE_THEMES[i];
+            QCOMPARE(matchingPaletteTheme(t.colours, t.reduction, t.keepBlackWhite, false, false, false), static_cast<int>(i));
+        }
+        const PaletteTheme& filtre = PALETTE_THEMES[2];
+        QCOMPARE(matchingPaletteTheme(filtre.colours + 1, filtre.reduction, filtre.keepBlackWhite, false, false, false), -1);
+        QCOMPARE(matchingPaletteTheme(filtre.colours, filtre.reduction, filtre.keepBlackWhite, false, true, false), -1);  // + RGB
+        QCOMPARE(matchingPaletteTheme(16, 0, false, false, false, false), -1);  // upstream default: Custom
+    }
+};
+
 QObject* newTestPalette() { return new TestPalette; }
+QObject* newTestPaletteThemes() { return new TestPaletteThemes; }
 QObject* newTestColourPicker() { return new TestColourPicker; }
 #include "tst_palette.moc"

@@ -1,4 +1,7 @@
 #include "separation.h"
+#include "inksimulation.h"
+#include <map>
+#include <array>
 #include "libdither.h"
 #include <QObject>
 #include <algorithm>
@@ -171,4 +174,138 @@ QImage compositeFromFilms(const std::vector<QImage>& films, const std::vector<In
         }
     }
     return out;
+}
+
+namespace {
+bool inked(const QImage& film, const int x, const int y) {
+    /* black on a Format_RGB32 film (splitByPalette) */
+    return qRed(reinterpret_cast<const QRgb*>(film.constScanLine(y))[x]) == 0;
+}
+
+const QImage* firstFilm(const std::vector<QImage>& films) {
+    const auto first = std::find_if(films.begin(), films.end(), [](const QImage& f) { return !f.isNull(); });
+    return first == films.end() ? nullptr : &*first;
+}
+}  // namespace
+
+void extendUnderFollowing(std::vector<QImage>& films, const std::vector<bool>& overprint) {
+    for (size_t i = 0; i < films.size() && i < overprint.size(); i++) {
+        if (!overprint[i] || films[i].isNull()) {
+            continue;
+        }
+        for (size_t j = i + 1; j < films.size(); j++) {
+            if (films[j].isNull() || films[j].size() != films[i].size()) {
+                continue;
+            }
+            for (int y = 0; y < films[i].height(); y++) {
+                QRgb* under = reinterpret_cast<QRgb*>(films[i].scanLine(y));
+                for (int x = 0; x < films[i].width(); x++) {
+                    if (inked(films[j], x, y)) {
+                        under[x] = qRgb(0, 0, 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+QImage sideBySidePrint(const std::vector<QImage>& films, const std::vector<InkChannel>& inks) {
+    const QImage* first = firstFilm(films);
+    if (first == nullptr || films.size() != inks.size()) {
+        return {};
+    }
+    QImage out(first->size(), QImage::Format_RGB32);
+    out.fill(Qt::white);
+    for (size_t i = 0; i < films.size(); i++) {  // later passes over earlier ones
+        if (films[i].isNull()) {
+            continue;
+        }
+        for (int y = 0; y < out.height(); y++) {
+            QRgb* o = reinterpret_cast<QRgb*>(out.scanLine(y));
+            for (int x = 0; x < out.width(); x++) {
+                if (inked(films[i], x, y)) {
+                    o[x] = inks[i].ink | 0xFF000000u;
+                }
+            }
+        }
+    }
+    return out;
+}
+
+QImage superposedPrint(const std::vector<QImage>& films, const std::vector<InkChannel>& inks,
+                       const std::vector<double>& opacity) {
+    const QImage* first = firstFilm(films);
+    if (first == nullptr || films.size() != inks.size()) {
+        return {};
+    }
+    const InkSimulation::Spectrum paper = InkSimulation::reflectanceFromSrgb(qRgb(255, 255, 255));
+    std::vector<InkSimulation::Ink> layers;
+    for (size_t i = 0; i < inks.size(); i++) {
+        layers.push_back(InkSimulation::inkFromPrint(inks[i].ink, i < opacity.size() ? opacity[i] : 0.0, paper));
+    }
+    std::map<std::vector<int>, QRgb> colours;  // per combination of passes: few in a picture
+    QImage out(first->size(), QImage::Format_RGB32);
+    std::vector<int> passes;
+    for (int y = 0; y < out.height(); y++) {
+        QRgb* o = reinterpret_cast<QRgb*>(out.scanLine(y));
+        for (int x = 0; x < out.width(); x++) {
+            passes.clear();
+            for (size_t i = 0; i < films.size(); i++) {
+                if (!films[i].isNull() && inked(films[i], x, y)) {
+                    passes.push_back(static_cast<int>(i));
+                }
+            }
+            auto found = colours.find(passes);
+            if (found == colours.end()) {
+                found = colours.emplace(passes, InkSimulation::print(layers, passes, paper)).first;
+            }
+            o[x] = found->second;
+        }
+    }
+    return out;
+}
+
+std::vector<QImage> printLayers(const std::vector<QImage>& films, const std::vector<InkChannel>& inks,
+                                const std::vector<double>& opacity, const bool superposed) {
+    std::vector<QImage> layers(films.size());
+    const QImage* first = firstFilm(films);
+    if (first == nullptr || films.size() != inks.size()) {
+        return layers;
+    }
+    for (size_t i = 0; i < films.size(); i++) {
+        if (!films[i].isNull()) {
+            layers[i] = QImage(first->size(), QImage::Format_ARGB32);
+            layers[i].fill(Qt::transparent);
+        }
+    }
+    const InkSimulation::Spectrum paper = InkSimulation::reflectanceFromSrgb(qRgb(255, 255, 255));
+    std::vector<InkSimulation::Ink> simulated;
+    if (superposed) {
+        for (size_t i = 0; i < inks.size(); i++) {
+            simulated.push_back(InkSimulation::inkFromPrint(inks[i].ink, i < opacity.size() ? opacity[i] : 0.0, paper));
+        }
+    }
+    std::map<std::vector<int>, QRgb> colours;  // per combination of passes so far
+    std::vector<int> passes;
+    for (int y = 0; y < first->height(); y++) {
+        for (int x = 0; x < first->width(); x++) {
+            passes.clear();
+            for (size_t i = 0; i < films.size(); i++) {
+                if (films[i].isNull() || !inked(films[i], x, y)) {
+                    continue;
+                }
+                passes.push_back(static_cast<int>(i));
+                QRgb colour = inks[i].ink;
+                if (superposed) {
+                    auto found = colours.find(passes);
+                    if (found == colours.end()) {
+                        found = colours.emplace(passes, InkSimulation::print(simulated, passes, paper)).first;
+                    }
+                    colour = found->second;
+                }
+                reinterpret_cast<QRgb*>(layers[i].scanLine(y))[x] = colour | 0xFF000000u;
+            }
+        }
+    }
+    return layers;
 }

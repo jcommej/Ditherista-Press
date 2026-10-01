@@ -235,6 +235,32 @@ private slots:
         QCOMPARE(p.planes[0], QByteArray(w * h, char(10)));
     }
 
+    void layerWithItsOwnPixelsIsNormal() {
+        // a pass of the superposed print: its own colours where it shows, Normal blend
+        QTemporaryDir dir;
+        const QString path = dir.filePath("pass.psd");
+        const int w = 4, h = 2;
+        QImage print(w, h, QImage::Format_RGB32);
+        print.fill(qRgb(200, 200, 200));
+        QImage pass(w, h, QImage::Format_ARGB32);
+        pass.fill(Qt::transparent);
+        pass.setPixel(1, 0, qRgba(10, 20, 30, 255));
+        pass.setPixel(2, 1, qRgba(40, 50, 60, 255));
+        PsdSpotChannel ink{"01_0A141E", qRgb(10, 20, 30), film(w, h, 1)};
+        ink.layer = pass;
+        QString error;
+        QVERIFY2(writePsd(path, print, {ink}, 300.0, &error, PsdInkLayout::Layers), qPrintable(error));
+        const Psd p = readPsd(path);
+        QCOMPARE(p.layers.size(), size_t(2));
+        QCOMPARE(p.layers[1].blend, QByteArray("norm"));
+        QByteArray alpha(w * h, char(0));
+        alpha[1] = char(255);
+        alpha[w + 2] = char(255);
+        QCOMPARE(p.layers[1].planes[0], alpha);
+        QCOMPARE(quint8(p.layers[1].planes[1][1]), quint8(10));
+        QCOMPARE(quint8(p.layers[1].planes[3][w + 2]), quint8(60));
+    }
+
     void rgbInksScreenOverAGarment() {
         QTemporaryDir dir;
         const QString path = dir.filePath("rgb.psd");

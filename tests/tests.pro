@@ -30,6 +30,8 @@ SOURCES += \
     tst_render.cpp \
     tst_favorites.cpp \
     tst_history.cpp \
+    tst_order.cpp \
+    $$APP/palette/paletteeditor.cpp \
     $$APP/history/sessionhistory.cpp \
     $$APP/history/abandonedrenders.cpp \
     $$APP/preferences/preferences.cpp \
@@ -46,6 +48,7 @@ SOURCES += \
     $$APP/presets/presetstore.cpp \
     $$APP/export/psdwriter.cpp \
     $$APP/screening/separation.cpp \
+    $$APP/screening/inksimulation.cpp \
     $$APP/viewport/graphicsview.cpp \
     $$APP/viewport/renderglyphbutton.cpp \
     $$APP/viewport/graphicspixmapitem.cpp \
@@ -68,4 +71,5 @@ HEADERS += \
     $$APP/palette/labpanel.h \
     $$APP/palette/colourpickerdialog.h \
     $$APP/ui_elements/mouseeventfilter.h \
-    $$APP/treewidget.h
+    $$APP/treewidget.h \
+    $$APP/palette/paletteeditor.h

@@ -147,7 +147,8 @@ QJsonObject MainWindow::capturePreset() const {
     for (const auto& [mode, channels] : channelSettings) {
         QJsonArray list;
         for (const ChannelSettings& c : channels) {
-            list.append(QJsonObject{{"enabled", c.enabled}, {"lpi", c.lpi}, {"angle", c.angle}});
+            list.append(QJsonObject{{"enabled", c.enabled}, {"lpi", c.lpi}, {"angle", c.angle}, {"overprint", c.overprint},
+                                    {"opacity", c.opacity}});
         }
         inks.insert(QString::number(mode), list);
     }
@@ -238,7 +239,9 @@ void MainWindow::applyPreset(const QJsonObject& preset) {
         std::vector<ChannelSettings> channels;
         for (const QJsonValue& value : inks.value(mode).toArray()) {
             const QJsonObject c = value.toObject();
-            channels.push_back({c.value("enabled").toBool(true), c.value("lpi").toDouble(0.0), c.value("angle").toDouble(0.0)});
+            channels.push_back({c.value("enabled").toBool(true), c.value("lpi").toDouble(0.0), c.value("angle").toDouble(0.0),
+                                c.value("overprint").toBool(false),  // older presets: knockout, as before
+                                c.value("opacity").toDouble(0.3)});
         }
         channelSettings[mode.toInt()] = channels;
     }
@@ -359,7 +362,7 @@ void MainWindow::applyPresetPalette(const QJsonObject& palette) {
     whileBlocking(ui->paletteColorsEdit)->setText(QString::number(palette.value("colors").toInt(16)));
     const int reduction = palette.value("reduction").toInt(ui->colorReductionCombo->currentIndex());
     whileBlocking(ui->colorReductionCombo)->setCurrentIndex(reduction);
-    colorReductionMode = static_cast<enum QuantizationMethod>(reduction + 1);  // as in colorReductionComboChangedSlot
+    colorReductionMode = static_cast<enum QuantizationMethod>(reduction);  // as in colorReductionComboChangedSlot
     whileBlocking(ui->palGenUniqueColorsCheck)->setChecked(palette.value("unique").toBool());
     whileBlocking(ui->palGenBWCheck)->setChecked(palette.value("bw").toBool());
     whileBlocking(ui->palGenRGBCheck)->setChecked(palette.value("rgb").toBool());

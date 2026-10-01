@@ -23,7 +23,11 @@ public:
     static QString tiffFilter();
     static QString tiffPackBitsFilter();
     static QString bmpFilter();
-    static QString psdFilter();
+    static QString psdFilter();                // inks as layers (the default layout)
+    static QString psdSpotChannelsFilter();
+    static QString psdLayersAndSpotChannelsFilter();
+    // PsdInkLayout of the PSD format chosen in the dialog (export/psdwriter.h), -1 when not a PSD
+    [[nodiscard]] int currentPsdLayout() const;
 private:
     /* attributes */
     bool defaultDirectory = true;

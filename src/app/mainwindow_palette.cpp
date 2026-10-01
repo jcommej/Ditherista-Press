@@ -1,6 +1,10 @@
 #include "mainwindow.h"
 #include "consts.h"
 #include "ui_elements/signalblocker.h"
+#include "palette/palettethemes.h"
+#include <QComboBox>
+#include <QLabel>
+#include <algorithm>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -389,8 +393,8 @@ void MainWindow::paletteIncludeExtremeColorsSlot(int) {
 
 void MainWindow::colorReductionComboChangedSlot(int index) {
     /* triggered for custom palettes when user changes the color reduction method */
-    // TODO: a Qt data item should be used here, rather than relying on the combo box's index -> more robust
-    colorReductionMode = (enum QuantizationMethod)(index + 1); // ensure index matches with QuantizationMethod enum
+    // the combo lists Median Cut, Wu, KD-Tree in the enum's order (upstream added 1, so each ran the next one)
+    colorReductionMode = static_cast<enum QuantizationMethod>(index);
     generateCachedPalette(true, false, true);
 }
 
@@ -408,4 +412,133 @@ void MainWindow::updatePaletteColorSwatches(BytePalette* palette) {
     if (paletteEditor != nullptr && palette == cachedPalette->target_palette) {
         paletteEditor->setPalette(currentPaletteEntries());  // with the custom palette's locks
     }
+}
+
+/*************************************************
+ * PALETTE THEMES (REDUCED PALETTE)              *
+ *************************************************/
+
+namespace {
+void insertTopRow(QGridLayout* grid, QWidget* label, QWidget* field) {
+    /* `label` and `field` as a new first row of `grid`, the existing rows moving down one */
+    struct Cell { QLayoutItem* item; int row, column, rowSpan, columnSpan; };
+    std::vector<Cell> cells;
+    while (grid->count() > 0) {
+        Cell cell{nullptr, 0, 0, 1, 1};
+        grid->getItemPosition(0, &cell.row, &cell.column, &cell.rowSpan, &cell.columnSpan);
+        cell.item = grid->takeAt(0);
+        cells.push_back(cell);
+    }
+    int columns = 2;
+    for (const Cell& cell : cells) {
+        grid->addItem(cell.item, cell.row + 1, cell.column, cell.rowSpan, cell.columnSpan);
+        columns = std::max(columns, cell.column + cell.columnSpan);
+    }
+    grid->addWidget(label, 0, 0);
+    grid->addWidget(field, 0, 1, 1, columns - 1);
+}
+}  // namespace
+
+void MainWindow::setupPaletteThemes() {
+    /* a Theme row on top of the "reduced" palette page: Ristretto .. Grand Cru fill the existing fields (see
+     * palette/palettethemes.h); the row shows Custom when the fields match no theme. On the custom page the same
+     * themes rebuild the custom palette from the picture, keeping its locked colours. */
+    paletteThemeCombo = new QComboBox(ui->paletteColorsEdit->parentWidget());
+    paletteThemeCombo->addItem(tr("Custom"));
+    for (const PaletteTheme& theme : PALETTE_THEMES) {
+        paletteThemeCombo->addItem(QString("%1 - %2").arg(QString::fromUtf8(theme.name)).arg(theme.colours));
+        paletteThemeCombo->setItemData(paletteThemeCombo->count() - 1, tr(theme.toolTip), Qt::ToolTipRole);
+    }
+    paletteThemeCombo->setToolTip(tr("Ready-made settings for reducing the picture's own colours, from 3 to 32"));
+    insertTopRow(ui->gridLayout_34, new QLabel(tr("Theme"), ui->paletteColorsEdit->parentWidget()), paletteThemeCombo);
+
+    // custom page: a theme rebuilds the custom palette from the picture
+    QComboBox* customTheme = new QComboBox(ui->savePaletteButton->parentWidget());
+    customTheme->addItem(tr("Rebuild from the picture..."));
+    for (const PaletteTheme& theme : PALETTE_THEMES) {
+        customTheme->addItem(QString("%1 - %2").arg(QString::fromUtf8(theme.name)).arg(theme.colours));
+        customTheme->setItemData(customTheme->count() - 1, tr(theme.toolTip), Qt::ToolTipRole);
+    }
+    customTheme->setToolTip(tr("Rebuild the custom palette from the picture's own colours with a theme's settings; "
+                               "locked colours are kept and count among them (Ctrl+Z to go back)"));
+    insertTopRow(ui->gridLayout_43, new QLabel(tr("Theme"), ui->savePaletteButton->parentWidget()), customTheme);
+    connect(customTheme, &QComboBox::activated, this, [this, customTheme](const int index) {
+        whileBlocking(customTheme)->setCurrentIndex(0);  // an action, not a state
+        if (index > 0) {
+            rebuildCustomPalette(PALETTE_THEMES[static_cast<size_t>(index - 1)]);
+        }
+    });
+
+    connect(paletteThemeCombo, &QComboBox::activated, this, [this](const int index) {
+        if (index <= 0) {
+            return;  // Custom: the fields stay as they are
+        }
+        const PaletteTheme& theme = PALETTE_THEMES[static_cast<size_t>(index - 1)];
+        whileBlocking(ui->paletteColorsEdit)->setText(QString::number(theme.colours));
+        whileBlocking(ui->colorReductionCombo)->setCurrentIndex(theme.reduction);
+        colorReductionMode = static_cast<enum QuantizationMethod>(theme.reduction);
+        whileBlocking(ui->palGenBWCheck)->setChecked(theme.keepBlackWhite);
+        whileBlocking(ui->palGenUniqueColorsCheck)->setChecked(false);
+        whileBlocking(ui->palGenRGBCheck)->setChecked(false);
+        whileBlocking(ui->palGenCMYCheck)->setChecked(false);
+        generateCachedPalette(true, false, true);  // one new palette, one render
+    });
+    // any field changed by hand (or by a preset, an undo): the theme it now matches, or Custom
+    const auto follow = [this]() { updatePaletteThemeCombo(); };
+    connect(ui->paletteColorsEdit, &QLineEdit::textChanged, this, follow);
+    connect(ui->colorReductionCombo, &QComboBox::currentIndexChanged, this, follow);
+    for (QCheckBox* check : {ui->palGenBWCheck, ui->palGenUniqueColorsCheck, ui->palGenRGBCheck, ui->palGenCMYCheck}) {
+        connect(check, &QCheckBox::toggled, this, follow);
+    }
+    updatePaletteThemeCombo();
+}
+
+void MainWindow::updatePaletteThemeCombo() {
+    if (paletteThemeCombo == nullptr) {
+        return;
+    }
+    const int theme = matchingPaletteTheme(ui->paletteColorsEdit->text().toInt(), ui->colorReductionCombo->currentIndex(),
+                                           ui->palGenBWCheck->isChecked(), ui->palGenUniqueColorsCheck->isChecked(),
+                                           ui->palGenRGBCheck->isChecked(), ui->palGenCMYCheck->isChecked());
+    whileBlocking(paletteThemeCombo)->setCurrentIndex(theme + 1);  // 0 = Custom
+}
+
+void MainWindow::rebuildCustomPalette(const PaletteTheme& theme) {
+    /* the custom palette made again from the picture with `theme`'s settings: its locked colours first, as they
+     * are, then the picture reduced to the remaining count - one undo step */
+    if (firstLoad || isDithering || imageHashColor.getSourceImage() == nullptr) {
+        notification->showText(tr("open a picture first"), 2000);
+        return;
+    }
+    PaletteEntries palette;
+    for (const PaletteEntry& entry : currentPaletteEntries()) {
+        if (entry.locked) {
+            palette.push_back(entry);
+        }
+    }
+    const int wanted = std::max(theme.colours, PaletteModel::MIN_COLOURS);
+    const int free = wanted - static_cast<int>(palette.size());
+    if (free > 0) {
+        setMouseBusy(true);
+        CachedPalette* reduced = CachedPalette_new();
+        fthread = QtConcurrent::run(CachedPalette_from_image, reduced, imageHashColor.getSourceImage(),
+                                    static_cast<size_t>(free), static_cast<enum QuantizationMethod>(theme.reduction),
+                                    false, theme.keepBlackWhite, false, false);
+        runDitherThread();
+        for (size_t i = 0; reduced->target_palette != nullptr && i < reduced->target_palette->size; i++) {
+            const ByteColor* c = BytePalette_get(reduced->target_palette, i);
+            const QRgb colour = qRgb(c->r, c->g, c->b);
+            if (std::none_of(palette.begin(), palette.end(), [colour](const PaletteEntry& e) { return e.colour == colour; })) {
+                palette.push_back({colour, false});  // a locked colour is not repeated
+            }
+        }
+        CachedPalette_free(reduced);
+        setMouseBusy(false);
+    }
+    if (static_cast<int>(palette.size()) < PaletteModel::MIN_COLOURS) {
+        notification->showText(tr("the picture has too few colours for this theme"), 2000);
+        return;
+    }
+    editPalette(palette);
+    notification->showText(tr("%1: %2 colours").arg(QString::fromUtf8(theme.name)).arg(palette.size()), 2000);
 }
