@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QColorSpace>
 #include <QFile>
 #include <QImageReader>
 #include <QTemporaryDir>
@@ -186,6 +187,30 @@ private slots:
         QCOMPARE(back.convertToFormat(QImage::Format_ARGB32), source);
         QCOMPARE(back.dotsPerMeterX(), 11811);  // PNG's only unit: 300 DPI to the nearest dot per metre
         QCOMPARE(qRound(back.dotsPerMeterX() * 0.0254), 300);
+    }
+
+    void colourFilmsCarryTheirProfile() {
+        // Preferences > Color Management: a colour film tagged with the working profile keeps it in the file
+        QTemporaryDir dir;
+        QImage colour(40, 20, QImage::Format_RGB32);
+        colour.fill(qRgb(210, 30, 60));
+        colour.setColorSpace(QColorSpace(QColorSpace::DisplayP3));
+        QString error;
+        QVERIFY2(writeTiff(dir.filePath("c.tif"), colour, 300.0, TiffCompression::PackBits, &error), qPrintable(error));
+        QVERIFY2(writePng(dir.filePath("c.png"), colour, 300.0, &error), qPrintable(error));
+        for (const char* name : {"c.tif", "c.png"}) {
+            QImageReader reader(dir.filePath(name));
+            const QImage back = reader.read();
+            QVERIFY2(!back.isNull(), name);
+            QVERIFY2(back.colorSpace() == QColorSpace(QColorSpace::DisplayP3), name);
+            QCOMPARE(back.convertToFormat(QImage::Format_RGB32).pixel(3, 3), qRgb(210, 30, 60));  // values as written
+        }
+        // a 1-bit film has no colour: no profile tag even if one is attached
+        QImage mono = toFilmImage(film(32, 16, 4));
+        mono.setColorSpace(QColorSpace(QColorSpace::DisplayP3));
+        QVERIFY(writeTiff(dir.filePath("m.tif"), mono, 300.0, TiffCompression::None, &error));
+        QVERIFY(!readTags(dir.filePath("m.tif")).value.contains(34675));
+        QVERIFY(readTags(dir.filePath("c.tif")).value.contains(34675));
     }
 };
 

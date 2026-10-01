@@ -77,6 +77,7 @@ void MainWindow::setupSeparationControls() {
     // just above the Screen panel, which sits right above the Input Image Settings
     const int index = ui->verticalLayout->indexOf(ui->imageSettingsStackedWidget) - 1;
     ui->verticalLayout->insertWidget(index, separationGroup, 0);
+    separationGroup->setVisible(lastTabIndex == TAB_INDEX_COLOR);  // Color tab only; the app opens on Mono
 
     connect(separationModeCombo, &QComboBox::currentIndexChanged, this, &MainWindow::separationModeChangedSlot);
     connect(separationViewCombo, &QComboBox::currentIndexChanged, this, &MainWindow::separationViewChangedSlot);
@@ -266,7 +267,7 @@ bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* wr
             }
         }
         const PsdInkLayout layout = static_cast<PsdInkLayout>(separationPsdLayoutCombo->currentData().toInt());
-        QImage composite = compositeFromFilms(films, channels, additive);
+        QImage composite = withProfile(compositeFromFilms(films, channels, additive));  // spots stay profile-less
         if (layout == PsdInkLayout::SpotChannels && !separationPsdCompositeCheck->isChecked()) {
             composite.fill(Qt::white);  // with layers, the image must match what the layers show
         }
@@ -274,7 +275,7 @@ bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* wr
         return *written == 1;
     }
     if (separationExportCombo->currentIndex() == 1) {
-        *written = write(fileName, compositeFromFilms(films, channels, additive)) ? 1 : 0;
+        *written = write(fileName, withProfile(compositeFromFilms(films, channels, additive))) ? 1 : 0;
         return *written == 1;
     }
     for (size_t i = 0; i < films.size(); i++) {

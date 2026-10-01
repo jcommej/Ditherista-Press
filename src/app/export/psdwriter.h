@@ -35,7 +35,8 @@ enum class PsdInkLayout { SpotChannels, Layers, LayersAndSpotChannels };
 
 inline constexpr int PSD_MAX_SIDE = 30000;
 
-// `composite`: the document's image. Grayscale when black/white or grey with no inks, RGB otherwise.
+// `composite`: the document's image. Grayscale when black/white or grey with no inks, RGB otherwise; an RGB
+// composite with a colour space (QImage::colorSpace) carries it as the document's ICC profile.
 // `additive`: RGB separation (Screen over black) rather than CMYK (Multiply over white); only used for layers.
 bool writePsd(const QString& path, const QImage& composite, const std::vector<PsdSpotChannel>& inks, double dpi,
               QString* error, PsdInkLayout layout = PsdInkLayout::SpotChannels, bool additive = false);

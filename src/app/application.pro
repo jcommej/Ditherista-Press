@@ -68,6 +68,9 @@ SOURCES += \
     palette/paletteeditor.cpp \
     palette/labpanel.cpp \
     palette/colourpickerdialog.cpp \
+    mainwindow_preferences.cpp \
+    preferences/preferences.cpp \
+    preferences/preferencesdialogs.cpp \
     treewidget.cpp \
     imagehash/imagehash.cpp \
     imagehash/imagehashcolor.cpp \
@@ -129,7 +132,9 @@ HEADERS += \
     palette/palettemodel.h \
     palette/paletteeditor.h \
     palette/labpanel.h \
-    palette/colourpickerdialog.h
+    palette/colourpickerdialog.h \
+    preferences/preferences.h \
+    preferences/preferencesdialogs.h
 
 FORMS += \
     mainwindow.ui \

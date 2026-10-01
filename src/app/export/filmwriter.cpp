@@ -1,4 +1,5 @@
 #include "filmwriter.h"
+#include <QColorSpace>
 #include <QImageWriter>
 #include <QSaveFile>
 #include <cmath>
@@ -43,7 +44,7 @@ QImage toFilmImage(const QImage& dithered) {
 
 namespace {
 
-enum : uint16_t { SHORT = 3, LONG = 4, RATIONAL = 5, ASCII = 2 };
+enum : uint16_t { SHORT = 3, LONG = 4, RATIONAL = 5, ASCII = 2, UNDEFINED = 7 };
 
 struct Entry {
     uint16_t tag;
@@ -189,6 +190,11 @@ bool writeTiff(const QString& path, const QImage& source, const double dpi, cons
     const uint32_t softwareAt = static_cast<uint32_t>(out.size());
     out.put(reinterpret_cast<const uint8_t*>(software.constData()), static_cast<size_t>(software.size()));
     out.u8(0);
+    // the colour profile of a colour film (Preferences > Color Management): tag 34675, the ICC data as is
+    const QByteArray icc = samples >= 3 && image.colorSpace().isValid() ? image.colorSpace().iccProfile() : QByteArray();
+    out.align();
+    const uint32_t iccAt = static_cast<uint32_t>(out.size());
+    out.put(reinterpret_cast<const uint8_t*>(icc.constData()), static_cast<size_t>(icc.size()));
 
     std::vector<Entry> entries = {
         {256, LONG, 1, static_cast<uint32_t>(width)},
@@ -208,6 +214,9 @@ bool writeTiff(const QString& path, const QImage& source, const double dpi, cons
     };
     if (alpha) {
         entries.push_back({338, SHORT, 1, 2u});  // extra sample: unassociated alpha
+    }
+    if (!icc.isEmpty()) {
+        entries.push_back({34675, UNDEFINED, static_cast<uint32_t>(icc.size()), iccAt});  // tags stay in order
     }
     out.align();
     out.patch32(ifdOffsetAt, static_cast<uint32_t>(out.size()));

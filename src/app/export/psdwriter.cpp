@@ -1,4 +1,5 @@
 #include "psdwriter.h"
+#include <QColorSpace>
 #include <QObject>
 #include <QSaveFile>
 #include <cmath>
@@ -221,6 +222,11 @@ bool writePsd(const QString& path, const QImage& composite, const std::vector<Ps
         r.u32(fixed); r.u16(1); r.u16(1);
         r.u32(fixed); r.u16(1); r.u16(1);
         resource(out, 1005, r.bytes);
+    }
+    if (!grey && composite.colorSpace().isValid()) {
+        // 1039 ICC profile of the RGB image (Preferences > Color Management); spot channels have none
+        const QByteArray icc = composite.colorSpace().iccProfile();
+        resource(out, 1039, std::vector<uint8_t>(icc.begin(), icc.end()));
     }
     if (withSpots) {
         // 1006 channel names as Pascal strings (older readers), 1045 as Unicode (current Photoshop)

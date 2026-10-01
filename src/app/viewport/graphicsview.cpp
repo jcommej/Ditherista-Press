@@ -6,6 +6,13 @@
 #include <QApplication>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QGestureEvent>
+#include <QPinchGesture>
+#include <QNativeGestureEvent>
+#include <QPainter>
+#include <QScrollBar>
+#include <algorithm>
+#include <cmath>
 
 /* A GraphicsView class that supports dragging and dropping */
 
@@ -24,6 +31,168 @@ GraphicsView::GraphicsView(QWidget* parent) : QGraphicsView(parent) {
     originalBadge->move(8, 8);
     originalBadge->adjustSize();
     originalBadge->hide();
+    // navigation
+    viewport()->setAttribute(Qt::WA_AcceptTouchEvents);
+    viewport()->grabGesture(Qt::PinchGesture);
+    motionTimer.setInterval(16);  // about 60 frames a second
+    connect(&motionTimer, &QTimer::timeout, this, &GraphicsView::motionFrame);
+    zoomTimer.setInterval(16);
+    connect(&zoomTimer, &QTimer::timeout, this, &GraphicsView::zoomFrame);
+    restCursor();
+}
+
+/*******************************************
+ * NAVIGATION: ZOOM, PAN, JOYSTICK, INERTIA *
+ *******************************************/
+
+namespace {
+constexpr double JOYSTICK_DEADZONE = 10.0;  // pixels around the click where the view stays still
+constexpr double JOYSTICK_GAIN = 4.0;       // speed = gain x (distance - deadzone) ^ power, pixels per second
+constexpr double JOYSTICK_POWER = 1.35;
+constexpr double JOYSTICK_MAX_SPEED = 6000.0;
+constexpr double INERTIA_TAU = 0.3;         // seconds for the speed to fall to 37 %
+constexpr double INERTIA_MIN_SPEED = 40.0;  // below this the motion stops
+constexpr double GRID_MIN_SPACING = 4.0;    // screen pixels: closer grid lines are not drawn
+}
+
+void GraphicsView::setBackground(const Background mode, const int grey) {
+    background = mode;
+    const int level = 255 - std::clamp(grey, 0, 255);  // 0 = white on the slider
+    setBackgroundBrush(mode == Background::Solid ? QColor(level, level, level)
+                       : mode == Background::GraphPaperWhite ? QColor(Qt::white) : QColor(0x10, 0x10, 0x10));
+    viewport()->update();
+}
+
+void GraphicsView::setPixelsPerMm(const double value) {
+    pixelsPerMm = value;
+    viewport()->update();
+}
+
+void GraphicsView::drawBackground(QPainter* painter, const QRectF& rect) {
+    QGraphicsView::drawBackground(painter, rect);  // the background brush
+    if (background == Background::Solid || pixelsPerMm <= 0.0) {
+        return;
+    }
+    const bool white = background == Background::GraphPaperWhite;
+    const QColor thin = white ? QColor(0xd6, 0xde, 0xe6) : QColor(0x2a, 0x2e, 0x34);
+    const QColor thick = white ? QColor(0x9c, 0xab, 0xbb) : QColor(0x50, 0x58, 0x62);
+    const double onScreen = pixelsPerMm * zoom;  // one millimetre on screen
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, false);
+    // lines in scene units (preview pixels) from the picture's top-left corner; cosmetic pens stay 1 px wide
+    const auto draw = [&](const double step, const QColor& colour, const int width) {
+        QPen pen(colour, width);
+        pen.setCosmetic(true);
+        painter->setPen(pen);
+        for (double x = std::floor(rect.left() / step) * step; x <= rect.right(); x += step) {
+            painter->drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()));
+        }
+        for (double y = std::floor(rect.top() / step) * step; y <= rect.bottom(); y += step) {
+            painter->drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y));
+        }
+    };
+    if (onScreen >= GRID_MIN_SPACING) {
+        draw(pixelsPerMm, thin, 1);
+    }
+    if (onScreen * 10.0 >= GRID_MIN_SPACING) {
+        draw(pixelsPerMm * 10.0, thick, 2);
+    }
+    painter->restore();
+}
+
+void GraphicsView::setZoomFactor(const double factor, const bool update, const QPointF* anchor) {
+    zoomTimer.stop();  // a zoom asked for (1:1, Fit, a number...) ends a smooth zoom still gliding
+    applyZoom(factor, update, anchor);
+}
+
+void GraphicsView::applyZoom(double factor, const bool update, const QPointF* anchor) {
+    factor = std::clamp(factor, MIN_ZOOM / 100.0, MAX_ZOOM / 100.0);
+    const QPointF scenePoint = anchor != nullptr ? mapToScene(anchor->toPoint()) : QPointF();
+    zoom = factor;
+    zoomLevel = static_cast<int>(std::lround(factor * 100.0));
+    setTransform(QTransform::fromScale(factor, factor));
+    if (anchor != nullptr) {
+        scrollBy(QPointF(mapFromScene(scenePoint)) - *anchor);  // bring the picture point back under the anchor
+    }
+    if (update) {
+        emit zoomLevelChangedSignal(zoomLevel);
+    }
+}
+
+void GraphicsView::zoomToFit() {
+    if (sceneRect().isEmpty()) {
+        return;
+    }
+    zoomTimer.stop();
+    fitInView(sceneRect(), Qt::KeepAspectRatio);
+    setZoomFactor(transform().m11(), true);
+    centerOn(sceneRect().center());
+}
+
+void GraphicsView::scrollBy(const QPointF& delta) {
+    scrollRemainder += delta;
+    const int dx = static_cast<int>(scrollRemainder.x());
+    const int dy = static_cast<int>(scrollRemainder.y());
+    scrollRemainder -= QPointF(dx, dy);
+    horizontalScrollBar()->setValue(horizontalScrollBar()->value() + dx);
+    verticalScrollBar()->setValue(verticalScrollBar()->value() + dy);
+}
+
+void GraphicsView::stopMotion() {
+    motion = Motion::None;
+    motionTimer.stop();
+    velocity = QPointF();
+    restCursor();
+}
+
+void GraphicsView::motionFrame() {
+    const double dt = std::clamp(frameClock.restart() / 1000.0, 0.0, 0.1);
+    if (motion == Motion::Joystick) {
+        // towards the pointer, faster the further it is from where the middle button went down
+        const QPointF offset = joystickPointer - joystickOrigin;
+        const double distance = std::hypot(offset.x(), offset.y());
+        if (distance <= JOYSTICK_DEADZONE) {
+            velocity = QPointF();
+        } else {
+            const double speed = std::min(JOYSTICK_MAX_SPEED, JOYSTICK_GAIN * std::pow(distance - JOYSTICK_DEADZONE, JOYSTICK_POWER));
+            velocity = offset / distance * speed;
+        }
+    } else if (motion == Motion::Inertia) {
+        velocity *= std::exp(-dt / INERTIA_TAU);
+        if (std::hypot(velocity.x(), velocity.y()) < INERTIA_MIN_SPEED) {
+            stopMotion();
+            return;
+        }
+    } else {
+        stopMotion();
+        return;
+    }
+    scrollBy(velocity * dt);
+}
+
+bool GraphicsView::viewportEvent(QEvent* event) {
+    /* pinch: two fingers on a touch screen (a gesture), or on a touchpad where the system reports it as a native
+     * gesture (touchpads that send it as Ctrl + wheel zoom through wheelEvent) */
+    if (navigation.pinchZoom && event->type() == QEvent::Gesture) {
+        QGestureEvent* gestures = static_cast<QGestureEvent*>(event);
+        if (QPinchGesture* pinch = static_cast<QPinchGesture*>(gestures->gesture(Qt::PinchGesture))) {
+            if (pinch->changeFlags() & QPinchGesture::ScaleFactorChanged) {
+                const QPointF at = viewport()->mapFromGlobal(pinch->centerPoint());
+                setZoomFactor(zoom * pinch->scaleFactor(), true, &at);
+            }
+            gestures->accept(pinch);
+            return true;
+        }
+    }
+    if (navigation.pinchZoom && event->type() == QEvent::NativeGesture) {
+        const QNativeGestureEvent* gesture = static_cast<QNativeGestureEvent*>(event);
+        if (gesture->gestureType() == Qt::ZoomNativeGesture) {
+            const QPointF at = gesture->position();
+            setZoomFactor(zoom * (1.0 + gesture->value()), true, &at);
+            return true;
+        }
+    }
+    return QGraphicsView::viewportEvent(event);
 }
 
 void GraphicsView::replaceItem(QGraphicsPixmapItem*& item, QGraphicsPixmapItem* replacement) {
@@ -66,15 +235,60 @@ void GraphicsView::showOriginal(const bool show) {
 }
 
 void GraphicsView::mousePressEvent(QMouseEvent* event) {
+    // drag to pan: the left or the right button; Ctrl + left still drags the film out as a file
+    const bool panButton = event->button() == Qt::RightButton ||
+                           (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ControlModifier));
+    if (navigation.dragPan && panButton) {
+        stopMotion();
+        setFocus();  // so that Space works right after
+        panning = true;
+        panningButton = event->button();
+        panLast = event->position();
+        velocity = QPointF();
+        moveClock.start();
+        viewport()->setCursor(Qt::ClosedHandCursor);
+        event->accept();
+        return;
+    }
+    if (event->button() == Qt::MiddleButton && navigation.middleJoystick) {
+        stopMotion();
+        setFocus();  // for Esc
+        joystickOrigin = joystickPointer = event->position();
+        motion = Motion::Joystick;
+        frameClock.start();
+        motionTimer.start();
+        viewport()->setCursor(Qt::SizeAllCursor);
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::LeftButton) {
+        stopMotion();
         setFocus();  // so that Space works right after
         pressPos = event->pos();
-        showOriginal(true);
+        if (!navigation.dragPan) {
+            showOriginal(true);  // upstream: hold the left button to see the original (Space does it in any case)
+        }
     }
-    QGraphicsView::mousePressEvent(event);
+    QGraphicsView::mousePressEvent(event);  // a drag of the film out of the window starts here
 }
 
 void GraphicsView::mouseMoveEvent(QMouseEvent* event) {
+    if (panning) {
+        const QPointF delta = event->position() - panLast;
+        panLast = event->position();
+        scrollBy(-delta);  // the picture follows the pointer
+        const double dt = moveClock.restart() / 1000.0;
+        if (dt > 0.0) {  // smoothed, for the inertia at release
+            velocity = velocity * 0.5 + (-delta / dt) * 0.5;
+        }
+        event->accept();
+        return;
+    }
+    if (motion == Motion::Joystick) {
+        joystickPointer = event->position();
+        event->accept();
+        return;
+    }
     /* moving past the drag distance turns the hold into a drag of the result out of the window */
     if (showingOriginal && (event->buttons() & Qt::LeftButton) &&
         (event->pos() - pressPos).manhattanLength() >= QApplication::startDragDistance()) {
@@ -84,6 +298,30 @@ void GraphicsView::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void GraphicsView::mouseReleaseEvent(QMouseEvent* event) {
+    if (panning && event->button() == panningButton) {
+        panning = false;
+        restCursor();
+        // a flick carries on; a pan that stopped before the release does not
+        if (navigation.inertia && moveClock.elapsed() < 80 && std::hypot(velocity.x(), velocity.y()) > INERTIA_MIN_SPEED) {
+            motion = Motion::Inertia;
+            frameClock.start();
+            motionTimer.start();
+        } else {
+            velocity = QPointF();
+        }
+        event->accept();
+        return;
+    }
+    if (event->button() == Qt::MiddleButton && motion == Motion::Joystick) {
+        if (navigation.inertia && std::hypot(velocity.x(), velocity.y()) > INERTIA_MIN_SPEED) {
+            motion = Motion::Inertia;  // the timer keeps running: the glide slows down
+            restCursor();
+        } else {
+            stopMotion();
+        }
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::LeftButton) {
         showOriginal(false);
     }
@@ -91,6 +329,11 @@ void GraphicsView::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 void GraphicsView::keyPressEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Escape && motion != Motion::None) {
+        stopMotion();
+        event->accept();
+        return;
+    }
     /* Space, while the preview has focus (click it or scroll over it first), is the keyboard equivalent */
     if (event->key() == Qt::Key_Space) {
         if (!event->isAutoRepeat()) {
@@ -195,8 +438,8 @@ void GraphicsView::resetScene(const int width, const int height) {
     /* resets and clears the GraphicsView */
     scene.setSceneRect(0, 0, width, height);
     scene.clear(); // clear scene and remove all QGraphicsItems
-    zoomLevel = 100;
-    emit zoomLevelChangedSignal(zoomLevel);
+    stopMotion();
+    setZoomFactor(1.0, true);  // upstream reset the number only; the view kept the previous picture's zoom
     out_pix_item_mono = nullptr;
     out_pix_item_color = nullptr;
     src_pix_item_mono = nullptr;
@@ -232,24 +475,69 @@ void GraphicsView::dropEvent(QDropEvent* event) {
 
 void GraphicsView::mouseDoubleClickEvent(QMouseEvent* event) {
     /* handle mouse double click -> resets zoom level */
-    resetTransform();
-    zoomLevel = 100;
-    emit zoomLevelChangedSignal(zoomLevel);
+    if (event->button() != Qt::LeftButton) {
+        mousePressEvent(event);  // a quick second click of the right or middle button is still navigation
+        return;
+    }
+    stopMotion();
+    setZoomFactor(1.0, true);
     event->accept();
 }
 
 void GraphicsView::wheelEvent(QWheelEvent* event) {
     /* zoom in / out when user uses mouse wheel */
     setFocus();
-    if (event->angleDelta().y() > 0 && zoomLevel > MIN_ZOOM) {
-        zoomLevel -= ZOOM_STEP_WHEEL;
-        setZoomLevel(zoomLevel, true);
-    } else if (event->angleDelta().y() < 0 && zoomLevel < MAX_ZOOM) {
-        zoomLevel += ZOOM_STEP_WHEEL;
-        setZoomLevel(zoomLevel, true);
-    }
     event->accept();
-};
+    double notches = event->angleDelta().y() / 120.0;  // touchpads send fractions of a notch
+    if (notches == 0.0) {
+        return;
+    }
+    if (navigation.invertWheel) {
+        notches = -notches;
+    }
+    const QPointF at = event->position();
+    switch (navigation.zoomMode) {
+        case ZoomMode::SmoothPointer: {
+            // the target moves by one increment per notch; the zoom glides to it (zoomFrame)
+            const double from = zoomTimer.isActive() ? zoomTarget : zoom;
+            zoomTarget = std::clamp(from * std::pow(1.0 + navigation.zoomIncrement / 100.0, notches),
+                                    MIN_ZOOM / 100.0, MAX_ZOOM / 100.0);
+            zoomAnchor = at;
+            if (!zoomTimer.isActive()) {
+                zoomClock.start();
+                zoomTimer.start();
+            }
+        } break;
+        case ZoomMode::SteppedPointer: {
+            // one increment per notch, wheel up zooms in, the point under the pointer stays put
+            const int steps = notches > 0 ? std::max(1, static_cast<int>(std::lround(notches)))
+                                          : std::min(-1, static_cast<int>(std::lround(notches)));
+            setZoomFactor((zoomLevel + steps * navigation.zoomIncrement) / 100.0, true, &at);
+        } break;
+        case ZoomMode::SteppedCentre:
+            // upstream: around the centre, wheel up zooms out
+            if (notches > 0 && zoomLevel > MIN_ZOOM) {
+                setZoomLevel(std::max(MIN_ZOOM, zoomLevel - navigation.zoomIncrement), true);
+            } else if (notches < 0 && zoomLevel < MAX_ZOOM) {
+                setZoomLevel(std::min(MAX_ZOOM, zoomLevel + navigation.zoomIncrement), true);
+            }
+            break;
+    }
+}
+
+void GraphicsView::zoomFrame() {
+    /* one frame of the smooth zoom: closes most of the gap to the target in about 0.1 s, in log scale so zooming in
+     * and out feel the same */
+    const double dt = std::clamp(zoomClock.restart() / 1000.0, 0.0, 0.1);
+    const double gap = std::log(zoomTarget / zoom);
+    if (std::abs(gap) < 0.002) {
+        zoomTimer.stop();
+        applyZoom(zoomTarget, true, &zoomAnchor);
+        return;
+    }
+    const double step = gap * (1.0 - std::exp(-dt / 0.045));
+    applyZoom(zoom * std::exp(step), true, &zoomAnchor);
+}
 
 int GraphicsView::getZoomLevel() {
     /* returns the current zoom level */
@@ -259,12 +547,7 @@ int GraphicsView::getZoomLevel() {
 void GraphicsView::setZoomLevel(int level, bool update) {
     /* sets the zoom level of the view; emits a signal if 'update' is true */
     if (level >= MIN_ZOOM && level <= MAX_ZOOM) {
-        zoomLevel = level;
-        float zl = (float) level / 100.0f;
-        setTransform(QTransform(zl, 0, 0, 0, zl, 0, 0, 0, 1));
-        if (update) {
-            emit zoomLevelChangedSignal(zoomLevel);
-        }
+        setZoomFactor(level / 100.0, update);
     }
 }
 

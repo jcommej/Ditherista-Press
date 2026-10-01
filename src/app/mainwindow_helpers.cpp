@@ -22,7 +22,7 @@ void MainWindow::runDitherThread() {
 void MainWindow::fileOpenSlot() {
     /* shows a file open dialog and loads an image file from disk */
     QString fileName;
-    if(fileManager.getOpenFileName(&fileName)) {
+    if(fileManager.getOpenFileName(&fileName, preferences.openFolder)) {
         loadImageFromFileSlot(fileName);
     }
 }
@@ -38,10 +38,9 @@ void MainWindow::fileSaveSlot() {
 }
 
 void MainWindow::fileSaveSlotImpl(const bool saveAs) {
-    QString fileName;
-    fileName = activeTreeWidget->getCurrentDitherFileName();
+    QString fileName = suggestedFileName();  // Preferences > Filename Settings
     if(!fileName.isEmpty()) {
-        fileName = fileManager.fileSave(saveAs, fileName);
+        fileName = fileManager.fileSave(saveAs, fileName, preferences.saveFolder);
         if (!fileName.isEmpty()) {
             saveFile(fileName);
         }
@@ -54,15 +53,10 @@ void MainWindow::fileSaveSlotImpl(const bool saveAs) {
 
 void MainWindow::copySlot() {
     /* copies the film - at the output DPI, not the possibly lighter preview - for a quick paste into an editor.
-     * The clipboard carries pixels only, no resolution: the pasted image has the right pixel count, and its DPI
-     * is set in the editor (in Photoshop: Image Size, Resample off) */
+     * Pasted as an image it carries no resolution: the pixel count is right, and the DPI is set in the editor
+     * (in Photoshop: Image Size, Resample off). Pasted as a file (Explorer...), the DPI is in the file. */
     if (isActiveWindow()) {
-        setMouseBusy(true);
-        const QImage film = renderFilm().convertToFormat(QImage::Format_ARGB32);
-        QGuiApplication::clipboard()->setImage(film, QClipboard::Clipboard);
-        setMouseBusy(false);
-        notification->showText(tr("film copied: %1 × %2 px\nset the resolution to %3 DPI after pasting")
-                                   .arg(film.width()).arg(film.height()).arg(screenGeometry.dpi, 0, 'f', 0), 3000);
+        copyToClipboard();  // pixels and files, as File > Copy to Clipboard (mainwindow_preferences.cpp)
     }
 }
 
@@ -77,6 +71,7 @@ void MainWindow::pasteSlot() {
         } else { // pasted content is a supported image
             const QImage image = clipboard->image(QClipboard::Clipboard);
             if (!image.isNull()) {
+                sourceFileName.clear();  // a pasted picture has no file name: {name} becomes "image"
                 loadImage(&image);
             }
         }

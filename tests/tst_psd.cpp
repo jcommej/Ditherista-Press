@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QColorSpace>
 #include <QFile>
 #include <QTemporaryDir>
 #include <random>
@@ -13,6 +14,7 @@ namespace {
 struct Psd {
     int channels = 0, width = 0, height = 0, depth = 0, mode = 0;
     double dpi = 0;
+    QByteArray icc;  // resource 1039
     QStringList names;
     std::vector<QRgb> inks;
     std::vector<int> kinds;
@@ -70,6 +72,7 @@ Psd readPsd(const QString& path) {
         const quint32 size = be32(d, at);
         const qsizetype data = at + 4;
         if (id == 1005) p.dpi = be32(d, data) / 65536.0;
+        if (id == 1039) p.icc = d.mid(data, size);
         if (id == 1045) {
             qsizetype s = data;
             while (s < data + size) {
@@ -262,6 +265,22 @@ private slots:
         QCOMPARE(p.channels, 1);
         QCOMPARE(p.dpi, 1200.0);
         QCOMPARE(p.planes[0], greyBytes(f));
+    }
+
+    void colourDocumentCarriesItsProfile() {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("colour.psd");
+        QImage print(20, 10, QImage::Format_RGB32);
+        print.fill(qRgb(200, 40, 90));
+        QString error;
+        QVERIFY(writePsd(path, print, {}, 300.0, &error));
+        QVERIFY(readPsd(path).icc.isEmpty());  // no colour space: no profile, as before
+        print.setColorSpace(QColorSpace(QColorSpace::AdobeRgb));
+        QVERIFY(writePsd(path, print, {}, 300.0, &error));
+        const Psd p = readPsd(path);
+        QCOMPARE(p.mode, 3);
+        QVERIFY(!p.icc.isEmpty());
+        QCOMPARE(QColorSpace::fromIccProfile(p.icc), QColorSpace(QColorSpace::AdobeRgb));
     }
 
     void tooLargeIsRefusedNotCorrupted() {

@@ -26,6 +26,9 @@ SOURCES += \
     tst_presets.cpp \
     tst_colour.cpp \
     tst_palette.cpp \
+    tst_preferences.cpp \
+    $$APP/preferences/preferences.cpp \
+    $$APP/ui_elements/mouseeventfilter.cpp \
     $$APP/color/colorspace.cpp \
     $$APP/palette/palettemodel.cpp \
     $$APP/palette/labpanel.cpp \
@@ -51,4 +54,5 @@ HEADERS += \
     $$APP/imagehash/imagehashmono.h \
     $$APP/imagehash/imagehashcolor.h \
     $$APP/palette/labpanel.h \
-    $$APP/palette/colourpickerdialog.h
+    $$APP/palette/colourpickerdialog.h \
+    $$APP/ui_elements/mouseeventfilter.h

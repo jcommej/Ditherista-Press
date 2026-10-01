@@ -20,6 +20,8 @@
 #include "palette/palettemodel.h"
 #include "palette/paletteeditor.h"
 #include "palette/colourpickerdialog.h"
+#include "preferences/preferences.h"
+#include "preferences/preferencesdialogs.h"
 #include <QTimer>
 #include <QJsonObject>
 #include <memory>
@@ -189,6 +191,30 @@ private:
     void renderLivePalettePreview();
     void settlePickerColour();
     void endPickerSession(bool keep);
+    // Preferences menu: navigation, screen calibration, file names, default folders; mainwindow_preferences.cpp
+    Preferences preferences;
+    QString sourceFileName;       // picture file name without extension, for {name}; empty for a pasted picture
+    PreferencesDialog* preferencesDialog = nullptr;
+    // Preferences menu entries also set from the Preferences window
+    std::vector<QAction*> zoomModeActions;
+    QAction* invertWheelAction = nullptr;
+    QAction* wheelOverFieldsAction = nullptr;
+    QImage loadedImage;                   // the picture as read, with its own colour profile
+    void setupPreferences();
+    void setupFileMenu();                 // Open Recent, Paste Image, Copy to Clipboard
+    void savePreferences();
+    void applyNavigation();               // navigation, zoom increment and background of the view
+    void preferencesChanged(PreferencesDialog::Change what);
+    [[nodiscard]] double screenPpi() const;  // calibrated, or what the system reports
+    void zoomToRealSize();                   // 1:1: the film at its size on paper
+    void showPreferences(PreferencesDialog::Section section);
+    [[nodiscard]] QString suggestedFileName() const;  // from the Filename Settings
+    // preview resolution for a film: the preview cap, times the Preview Quality
+    [[nodiscard]] double previewDpi(double dpi, double widthMm, double heightMm) const;
+    // colour management: pictures in the working profile; colour exports carry it when asked
+    [[nodiscard]] QImage toWorkingSpace(const QImage& image) const;
+    [[nodiscard]] QImage withProfile(QImage film) const;
+    void copyToClipboard();  // Copy to Clipboard: the film as pixels, and as files, see Preferences > Clipboard
     // presets, see mainwindow_presets.cpp
     std::unique_ptr<PresetStore> presetStore;
     QGroupBox* presetGroup = nullptr;

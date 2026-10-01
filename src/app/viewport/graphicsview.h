@@ -5,7 +5,9 @@
 #include "graphicspixmapitem.h"
 #include <QGraphicsView>
 #include <QDragEnterEvent>
+#include <QElapsedTimer>
 #include <QLabel>
+#include <QTimer>
 
 class GraphicsView final : public QGraphicsView {
     Q_OBJECT
@@ -44,10 +46,76 @@ public:
 
     void setZoomLevel(int level, bool update);
 
+    /* Navigation (Preferences menu). Each can be turned off, giving back upstream's behaviour:
+     * - zoomMode: smooth - the wheel zooms continuously (animated) around the point under the pointer; stepped
+     *   around the pointer; or stepped around the centre as upstream did, where the wheel up zooms out
+     * - invertWheel: the wheel zooms the other way round, whatever the mode
+     * - dragPan: drag with the left or the right button to move the picture; Ctrl + left drag exports the film
+     *   as a file, Space shows the original (upstream: hold the left button for the original, drag to export)
+     * - middleJoystick: click the middle button and move away from that point: the view glides that way, faster
+     *   the further the pointer is; release (or Esc) to stop
+     * - inertia: after a pan or a joystick glide the view carries on and slows down
+     * - pinchZoom: pinch on a touch screen or a touchpad */
+    enum class ZoomMode { SmoothPointer, SteppedPointer, SteppedCentre };  // same order as Preferences::ZoomMode
+    struct Navigation {
+        ZoomMode zoomMode = ZoomMode::SmoothPointer;
+        bool invertWheel = false;
+        bool dragPan = true;
+        bool middleJoystick = true;
+        bool inertia = true;
+        bool pinchZoom = true;
+        int zoomIncrement = 10;  // % per wheel notch: points added (stepped) or factor 1 + % (smooth)
+    };
+    /* Background behind the picture: a grey (0 white .. 255 black), or graph paper at the film's scale - a thin
+     * line every millimetre, a thick one every centimetre - on white or black, from the picture's corner */
+    enum class Background { Solid, GraphPaperWhite, GraphPaperBlack };
+    void setBackground(Background mode, int grey);
+    void setPixelsPerMm(double pixelsPerMm);  // of the preview: the scale of the graph paper
+    void setNavigation(const Navigation& settings) {
+        navigation = settings;
+        restCursor();
+    }
+    // zoom factor (1 = 100 %), limited to MIN_ZOOM..MAX_ZOOM percent; `anchor`, a point of the viewport, stays
+    // over the same point of the picture
+    void setZoomFactor(double factor, bool update, const QPointF* anchor = nullptr);
+    [[nodiscard]] double zoomFactor() const { return zoom; }
+    void zoomToFit();  // the whole picture in the view
+
     ~GraphicsView() override;
+protected:
+    bool viewportEvent(QEvent* event) override;  // pinch gestures
+    void drawBackground(QPainter* painter, const QRectF& rect) override;  // graph paper
 private:
     /* attributes */
-    int zoomLevel = 100; // in percent
+    int zoomLevel = 100; // in percent, rounded from zoom
+    double zoom = 1.0;
+    Navigation navigation;
+    Background background = Background::Solid;
+    double pixelsPerMm = 0.0;  // 0 = unknown (no picture): no graph paper lines
+    // right-drag pan, middle-button joystick, inertia: the view moves by scrolling
+    enum class Motion { None, Joystick, Inertia };
+    bool panning = false;
+    Qt::MouseButton panningButton = Qt::NoButton;
+    QPointF panLast;
+    QPointF velocity;           // scroll speed in viewport pixels per second
+    QElapsedTimer moveClock;    // time since the last pan move
+    Motion motion = Motion::None;
+    QPointF joystickOrigin;
+    QPointF joystickPointer;
+    QTimer motionTimer;         // one frame of joystick or inertia motion
+    QElapsedTimer frameClock;
+    QPointF scrollRemainder;    // sub-pixel scrolling carried over to the next frame
+    // smooth zoom: the zoom glides towards its target, the point under the pointer staying put
+    double zoomTarget = 1.0;
+    QPointF zoomAnchor;
+    QTimer zoomTimer;
+    QElapsedTimer zoomClock;
+    void zoomFrame();
+    void applyZoom(double factor, bool update, const QPointF* anchor);  // setZoomFactor without ending the glide
+    void scrollBy(const QPointF& delta);
+    void motionFrame();
+    void stopMotion();
+    void restCursor() { viewport()->setCursor(navigation.dragPan ? Qt::OpenHandCursor : Qt::ArrowCursor); }
     QGraphicsScene scene;
     GraphicsPixmapItem* out_pix_item_mono = nullptr;   // dithered mono image
     GraphicsPixmapItem* out_pix_item_color = nullptr;  // dithered color image

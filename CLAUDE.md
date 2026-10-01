@@ -108,6 +108,8 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `color/colorspace.*` | exact sRGB ↔ CIELAB (D65, CIE ε/κ), gamut test and chroma clamp, HEX parse/format |
 | `palette/palettemodel.*` | palette entries + locks, 2..256 limits, seeded randomize, "least represented" colour, Paint.NET I/O (locks in a `;Locked:` comment; the one reader for every palette file), `PaletteHistory` (undo/redo, picker sessions) |
 | `palette/paletteeditor.*` | Palette tab colour list: [swatch][#HEX][lock][delete][🔀] rows, Add / Randomize / Save / Load |
+| `preferences/preferences.*` | Preferences (navigation, zoom increment, background, preview quality, working profile, clipboard, recent files, screen PPI, file-name template, folders) in `%APPDATA%/ditherista/preferences.ini`; `fileNameFromTemplate`, `toColorSpace` |
+| `preferences/preferencesdialogs.*` | Preferences window (one scrolling page of sections, styled after the user's mock-ups), screen calibration dialog, `ToggleSwitch` |
 | `palette/labpanel.*`, `palette/colourpickerdialog.*` | colour picker: Qt's QColorDialog embedded + LAB panel (3D gamut cloud, a*b* slice, L* slider), one colour, live |
 
 ### MainWindow additions
@@ -118,6 +120,7 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `mainwindow_tone.cpp` | the 7 extra rows of Input Image Settings (mono page, then colour page) |
 | `mainwindow_separation.cpp` | Color Separation panel, per-ink table, rendering/saving films; the settings scroll area |
 | `mainwindow_presets.cpp` | Presets bar, `capturePreset` / `applyPreset` |
+| `mainwindow_preferences.cpp` | Preferences menu (between Edit and Help), 1:1 and Fit buttons in the status bar, suggested save name |
 | `mainwindow_palette_editor.cpp` | palette editing (`editPalette` = one undo step → custom palette), Edit > Undo/Redo Palette Change, colour picker session with live low-res preview |
 | `mainwindow.cpp` | `ditherMonoInto` / `ditherColorInto` (dither any cache: preview or film), `renderFilm`, `saveFile` |
 | `viewport/graphicsview.cpp` | hold click / Space to show the original, scene item replacement without leaks |
@@ -154,6 +157,25 @@ or a short-lived full-resolution cache for export, without duplicating them.
   Measured on 16 MP: ~0.1-0.2 s per live frame, 3.6 s full.
 - LAB panel: follows the user's HTML mock-up, except L* is the vertical axis of the 3D view (matches the L*
   slider). Out-of-gamut picks are clamped to the sRGB edge (same L*, same hue).
+- **Preview mouse roles (decided by the user, changed once already): left or right drag = pan, Ctrl + left drag =
+  export the file, Space = original, double-click = 100 %.** Preferences > Drag to Pan off gives upstream back
+  (left hold = original, left drag = export). Navigation from plotterfun (`D:\Documents\plotterfun\plotterfun\ui.js`),
+  each switchable: three zoom modes - smooth (animated glide) around the pointer, stepped around the pointer (both
+  wheel up = in), stepped around the centre = upstream (wheel up = out); invert wheel; zoom increment (default
+  10 %); middle-button joystick (hold, Esc stops), inertia, pinch. "Wheel Changes Values Over Fields" off: the app
+  event filter (`MouseEventFilter`) hands wheel events over spin boxes, sliders and combos to the scroll area. 1:1 = `screenPpi / renderDpi`
+  (the scene is at the preview DPI), screen PPI from Calibrate Screen or the system's. Zoom 2 %..1600 %.
+- **Colour management = working space + export** (user's choice): pictures converted from their embedded profile
+  (untagged = sRGB) to the working profile (sRGB default: untagged/sRGB pictures untouched, bit for bit); colour
+  PNG/TIFF/PSD carry it (TIFF tag 34675, PSD resource 1039, PNG via Qt); 1-bit films never. No display conversion.
+- Preview Quality 100/75/50 % scales the preview DPI (`previewDpi`); export always full. View background: grey
+  slider (default mid grey, marked) or graph paper white/black at the film's scale (`GraphicsView::drawBackground`).
+- Copy to Clipboard (File, and Edit > Copy): pixels + files in `%TEMP%/ditherista-clipboard` (PNG/TIFF/PSD with DPI
+  and profile); when separating with Clipboard = "ask", a small window picks the print, one ink's 1-bit film, or
+  every ink as files (or one PSD). File > Open Recent (5), Paste Image.
+- Save name = Filename Settings template (default `{name}{suffix}.{ext}`, suffix `_{dither}`); upstream proposed
+  the algorithm name only.
+- Postponed by the user: dot shapes (maybe with other algorithms), histogram, dot cut-off / high-cut overlay.
 - Known open question: matrix smoothing for round dots / more grey levels at high DPI was proposed and
   postponed by the user ("je valide pour le moment").
 
@@ -176,7 +198,26 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | 8 Per-ink LPI and angle | done (`feature/channel-angles`) |
 | 9 Presets | done (`feature/presets`) |
 | — Separation moved to the Color tab + Palette separation | done (`feature/separation-colour-tab`) |
-| 10 Dot shapes, histogram, curves, technical overlay, UI | to do |
+| — Palette editor (HEX, lock, delete, add, randomize, undo), live colour picker + CIELAB panel | done (`feature/palette-editor`, `fix/palette-tab-scroll`) |
+| 10 UI: navigation (zoom modes, drag pan, joystick, inertia, pinch, 1:1, Fit), Preferences window (colour management, preview quality, zoom/wheel, background, clipboard, file names, folders, calibration), Open Recent, Paste Image, Copy to Clipboard | done (`feature/navigation-preferences`) |
+
+### Next objectives (as of 2026-10-01)
+
+To check in real use (could not be tested here): pinch to zoom on a real touchpad / touch screen; the feel of the
+joystick and inertia (constants at the top of `viewport/graphicsview.cpp`); pasting a Copy to Clipboard into
+Photoshop (image paste carries no DPI; the file copy does); the preview of wide-gamut working profiles (shown
+unconverted, so less saturated).
+
+Postponed by the user, to propose again later:
+- **Histogram** of the adjusted picture (plotterfun has one, with clipped blacks / whites masks).
+- **Dot cut-off / high-cut overlay**: show where dots are too small to hold on the screen or close up, from LPI,
+  mesh and DPI; maybe a cut-off applied to the films.
+- **Dot shapes** (round, elliptical, line), maybe once other algorithms come in; and the older open question of
+  matrix smoothing for round dots / more grey levels at high DPI.
+
+Proposed, not decided: registration marks and ink names on exported films; a display (soft-proof) conversion for
+wide working profiles; the plotterfun items the user did not pick (collapsible panels, live re-render while
+dragging a slider, lighter preview during interaction, crop mini-view).
 
 Open report from the user: a crash on a 1500 × 1000 mm film at 300 DPI (209 MP) was **not reproduced** with
 Bayer 8×8 + LPI; the scene-item leaks fixed in phase 4 are a likely contributor. Ask for the algorithm and step
