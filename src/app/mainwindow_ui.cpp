@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "ui_elements/pixelbuttonglyph.h"
 #include "consts.h"
 #include "modernredux/style.h"
 #include "ui_elements/signalblocker.h"
@@ -54,11 +55,11 @@ void MainWindow::enableGui(bool enable) {
     ui->statusBarWidget->setEnabled(enable);
 }
 
-void MainWindow::setResetIcon(QPushButton* button, const QIcon* icon) {
-    /* helper for setting QIcons on QPushButtons (e.g. for the reset button's X icon) */
-    button->setIcon(*icon);
+void MainWindow::setResetIcon(QPushButton* button) {
+    /* the reset buttons' X: a pixel cross that scatters and comes back when clicked (ui_elements/pixelbuttonglyph.h) */
     button->setIconSize(resetButtonIconSize);
     button->setFixedSize(resetButtonSize);
+    PixelButtonGlyph::attach(button, PixelButtonGlyph::Kind::Cross, resetButtonIconSize.width());
 }
 
 QPixmap* MainWindow::loadSvg(const QString& fileName) {
@@ -145,26 +146,18 @@ void MainWindow::uiSetup() {
     ui->splitter->setStretchFactor(1, 0);
     ui->splitter->setSizes({-1, MIN_SPLITTER_WIDTH});
     ui->imageSettingsContainer->setMinimumWidth(MIN_SPLITTER_WIDTH);
-    // set custom icon for image adjustment reset buttons
-    QIcon reset_icon;
-    QPixmap* pm_enabled = loadSvg(":/resources/times.svg");
-    reset_icon.addPixmap(*pm_enabled, QIcon::Normal);
-    delete pm_enabled;
-    QPixmap* pm_disabled = loadSvg(":/resources/times_disabled.svg");
-    reset_icon.addPixmap(*pm_disabled, QIcon::Disabled);
-    delete pm_disabled;
-    // set reset icon for 'reset color adjustment' buttons
-    setResetIcon(ui->resetContrastButtonColor, &reset_icon);
-    setResetIcon(ui->resetBrightnessButtonColor, &reset_icon);
-    setResetIcon(ui->resetGammaButtonColor, &reset_icon);
-    setResetIcon(ui->resetSaturationButtonColor, &reset_icon);
-    setResetIcon(ui->resetContrastButtonMono, &reset_icon);
-    setResetIcon(ui->resetBrightnessButtonMono, &reset_icon);
-    setResetIcon(ui->resetGammaButtonMono, &reset_icon);
-    setResetIcon(ui->resetMonoColors, &reset_icon);
-    setResetIcon(ui->resetHueWeightButton, &reset_icon);
-    setResetIcon(ui->resetChromaWeightButton, &reset_icon);
-    setResetIcon(ui->resetValueWeightButton, &reset_icon);
+    // pixel cross on the 'reset adjustment' buttons
+    setResetIcon(ui->resetContrastButtonColor);
+    setResetIcon(ui->resetBrightnessButtonColor);
+    setResetIcon(ui->resetGammaButtonColor);
+    setResetIcon(ui->resetSaturationButtonColor);
+    setResetIcon(ui->resetContrastButtonMono);
+    setResetIcon(ui->resetBrightnessButtonMono);
+    setResetIcon(ui->resetGammaButtonMono);
+    setResetIcon(ui->resetMonoColors);
+    setResetIcon(ui->resetHueWeightButton);
+    setResetIcon(ui->resetChromaWeightButton);
+    setResetIcon(ui->resetValueWeightButton);
     // Add items to MacOS application menu and about-window
     aboutWindow = new AboutWindow(this);
     setWindowTitle(aboutWindow->appTitle); // needs to be set up after the about window has been initialized

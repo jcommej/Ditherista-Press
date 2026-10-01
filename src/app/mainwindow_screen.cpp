@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "ui_elements/pixelbuttonglyph.h"
 #include "screening/matrixstretch.h"
 #include "consts.h"
 #include "ui_elements/signalblocker.h"
@@ -57,10 +58,7 @@ void MainWindow::setupScreenControls() {
     aspectLockButton->setChecked(true);
     aspectLockButton->setAutoRaise(true);
     aspectLockButton->setIconSize(QSize(14, 14));
-    QIcon lockIcon;
-    lockIcon.addFile(":/resources/lock_open.svg", QSize(), QIcon::Normal, QIcon::Off);
-    lockIcon.addFile(":/resources/lock_closed.svg", QSize(), QIcon::Normal, QIcon::On);
-    aspectLockButton->setIcon(lockIcon);
+    PixelButtonGlyph::attach(aspectLockButton, PixelButtonGlyph::Kind::Lock, 14);  // pixel padlock, animated
     aspectLockButton->setToolTip(tr("Keep proportions: locked, width and height change together."));
     sizeLayout->addWidget(printWidthSpin, 1);
     sizeLayout->addWidget(aspectLockButton);

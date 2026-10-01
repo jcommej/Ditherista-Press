@@ -34,7 +34,7 @@ void MainWindow::addAdjustRow(QGridLayout* grid, const int row, const QString& l
     spin->setMaximumSize(ui->brightnessEditMono->maximumSize());
     spin->setToolTip(toolTip);
     QPushButton* reset = new QPushButton(parent);
-    setResetIcon(reset, &adjustResetIcon);
+    setResetIcon(reset);
     reset->setToolTip(tr("Reset"));
 
     grid->addWidget(text, row, 0);
@@ -59,14 +59,6 @@ void MainWindow::addAdjustRow(QGridLayout* grid, const int row, const QString& l
 
 void MainWindow::setupToneControls() {
     /* inserts the new rows above the "show original image" checkbox of each page */
-    adjustResetIcon = QIcon();
-    QPixmap* enabled = loadSvg(":/resources/times.svg");
-    adjustResetIcon.addPixmap(*enabled, QIcon::Normal);
-    delete enabled;
-    QPixmap* disabled = loadSvg(":/resources/times_disabled.svg");
-    adjustResetIcon.addPixmap(*disabled, QIcon::Disabled);
-    delete disabled;
-
     const QString blacksTip = tr("- : crush the darkest tones to solid black (100% ink).\n"
                                  "+ : lift pure black so no area is solid.");
     const QString whitesTip = tr("+ : clip the lightest tones to paper white (no dot).\n"

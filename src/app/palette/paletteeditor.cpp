@@ -1,4 +1,5 @@
 #include "paletteeditor.h"
+#include "ui_elements/pixelbuttonglyph.h"
 #include "color/colorspace.h"
 #include <QFontDatabase>
 #include <QGridLayout>
@@ -96,10 +97,7 @@ PaletteEditor::Row PaletteEditor::makeRow(const int index) {
     row.hex->setToolTip(tr("#RRGGBB, #RGB or #AARRGGBB - Enter to apply"));
     row.lock = tool(tr("Lock: the colour cannot be deleted or randomized"));
     row.lock->setCheckable(true);
-    QIcon lockIcon;
-    lockIcon.addFile(":/resources/lock_open.svg", QSize(), QIcon::Normal, QIcon::Off);
-    lockIcon.addFile(":/resources/lock_closed.svg", QSize(), QIcon::Normal, QIcon::On);
-    row.lock->setIcon(lockIcon);
+    PixelButtonGlyph::attach(row.lock, PixelButtonGlyph::Kind::Lock, ICON_SIZE);  // pixel padlock, animated
     row.remove = tool(tr("Delete this colour"));
     row.remove->setIcon(icon(":/resources/trash.svg", ":/resources/trash_disabled.svg"));
     row.shuffle = tool(tr("Replace this colour with a random one"));

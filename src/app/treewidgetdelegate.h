@@ -7,14 +7,11 @@
 class TreeWidgetDelegate final : public QStyledItemDelegate {
 public:
     /* attributes */
-    int selected_row = 0; // row number of the currently selected item
+    int selected_row = 0; // place in the list as built (ROLE_NATURAL_ROW) of the selected item - rows move with favourites
     /* methods */
     explicit TreeWidgetDelegate(QObject* parent);
     void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override;
-private:
-    /* attributes */
-    QPixmap ready;
-    QPixmap notReady;
+    static QRect starRect(const QRect& row);  // the favourite star, left of the dithered / not dithered dot
 };
 
 #endif  // TREEWIDGETDELEGATE_H
