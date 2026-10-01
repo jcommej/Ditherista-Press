@@ -135,7 +135,11 @@ void MainWindow::separationModeChangedSlot(int) {
 
 void MainWindow::separationViewChangedSlot(int) {
     if (!firstLoad && separationActive()) {
-        showSeparation();  // films are cached: switching the view does not re-dither
+        if (renderPaused) {
+            renderDirty = true;  // films may be stale: shown once the render control resumes
+        } else {
+            showSeparation();  // films are cached: switching the view does not re-dither
+        }
     }
 }
 

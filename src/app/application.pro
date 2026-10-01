@@ -30,6 +30,7 @@ SOURCES += \
     help/helpwindow.cpp \
     about/aboutwindow.cpp \
     viewport/graphicsview.cpp \
+    viewport/renderglyphbutton.cpp \
     viewport/graphicspixmapitem.cpp \
     batch/batchditherdialog.cpp \
     batch/batchditherprogress.cpp \
@@ -69,6 +70,7 @@ SOURCES += \
     palette/labpanel.cpp \
     palette/colourpickerdialog.cpp \
     mainwindow_preferences.cpp \
+    mainwindow_render.cpp \
     preferences/preferences.cpp \
     preferences/preferencesdialogs.cpp \
     treewidget.cpp \
@@ -91,6 +93,7 @@ HEADERS += \
     help/helpwindow.h \
     about/aboutwindow.h \
     viewport/graphicsview.h \
+    viewport/renderglyphbutton.h \
     viewport/graphicspixmapitem.h \
     batch/batchditherdialog.h \
     batch/batchditherprogress.h \

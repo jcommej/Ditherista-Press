@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "export/filmwriter.h"
 #include "export/psdwriter.h"
+#include "viewport/renderglyphbutton.h"
 #include <QActionGroup>
 #include <QClipboard>
 #include <QInputDialog>
@@ -172,14 +173,14 @@ void MainWindow::preferencesChanged(const PreferencesDialog::Change what) {
             break;
         case PreferencesDialog::Change::PreviewQuality:
             if (!firstLoad) {
-                applyOutputSize(screenGeometry.dpi, printWidthMm, printHeightMm);  // same film, new preview
+                requestOutputSize(screenGeometry.dpi, printWidthMm, printHeightMm);  // same film, new preview
             }
             break;
         case PreferencesDialog::Change::ColorProfile:
             if (!firstLoad) {
                 // the picture as read, converted again, then the preview and every result made anew
                 nativeImage = toWorkingSpace(loadedImage).convertToFormat(QImage::Format_ARGB32);
-                applyOutputSize(screenGeometry.dpi, printWidthMm, printHeightMm);  // resamples, re-dithers
+                requestOutputSize(screenGeometry.dpi, printWidthMm, printHeightMm);  // resamples, re-dithers
             }
             break;
         case PreferencesDialog::Change::Other:
@@ -316,6 +317,7 @@ void MainWindow::copyToClipboard() {
     if (firstLoad || isDithering) {
         return;
     }
+    renderBeforeExport();  // render control paused with changes waiting: render them first
     // separating, with Preferences > Clipboard on "ask": which channel - the print, one ink, or every ink
     enum { Print = -1, Every = -2 };
     int channel = Print;
@@ -341,6 +343,7 @@ void MainWindow::copyToClipboard() {
         channel = indices[static_cast<size_t>(items.indexOf(item))];
     }
     setMouseBusy(true);
+    const RenderGlyphActivity activity(renderButton);  // the render control breathes while the film is made
     if (renderDpi < screenGeometry.dpi) {
         notification->showText(tr("rendering the film at %1 DPI...").arg(screenGeometry.dpi, 0, 'f', 0), 60000);
         QApplication::processEvents();

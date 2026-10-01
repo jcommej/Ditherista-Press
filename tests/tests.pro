@@ -27,6 +27,7 @@ SOURCES += \
     tst_colour.cpp \
     tst_palette.cpp \
     tst_preferences.cpp \
+    tst_render.cpp \
     $$APP/preferences/preferences.cpp \
     $$APP/ui_elements/mouseeventfilter.cpp \
     $$APP/color/colorspace.cpp \
@@ -37,6 +38,7 @@ SOURCES += \
     $$APP/export/psdwriter.cpp \
     $$APP/screening/separation.cpp \
     $$APP/viewport/graphicsview.cpp \
+    $$APP/viewport/renderglyphbutton.cpp \
     $$APP/viewport/graphicspixmapitem.cpp \
     $$APP/export/filmwriter.cpp \
     $$APP/screening/cellresample.cpp \
@@ -49,6 +51,7 @@ SOURCES += \
 
 HEADERS += \
     $$APP/viewport/graphicsview.h \
+    $$APP/viewport/renderglyphbutton.h \
     $$APP/viewport/graphicspixmapitem.h \
     $$APP/imagehash/imagehash.h \
     $$APP/imagehash/imagehashmono.h \

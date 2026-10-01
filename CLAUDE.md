@@ -3,7 +3,9 @@
 Fork of [robertkist/ditherista](https://github.com/robertkist/ditherista) (Qt 6 / C++20 GUI over the
 `libdither` C library, MIT) turned into a tool for preparing **screen-printing films**: physical print size,
 output DPI, LPI screens with per-ink angles, tone controls, CMYK/RGB separation, lossless 1-bit film export,
-PSD with spot channels, presets.
+PSD with spot channels, presets. Its name is **Ditherista Press** (window title and About via `APP_TITLE` in the
+Makefile, help pages, TIFF Software tag); the executable (`ditherista.exe`), `APPNAME_CS`, the
+`%APPDATA%/ditherista` folder and the preset format id keep the old name on purpose (settings and presets).
 
 Read this before editing. It exists so a new session — on any PC — does not re-derive the architecture,
 re-open decisions already made with the user, or fall into the traps below.
@@ -124,6 +126,8 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `mainwindow_palette_editor.cpp` | palette editing (`editPalette` = one undo step → custom palette), Edit > Undo/Redo Palette Change, colour picker session with live low-res preview |
 | `mainwindow.cpp` | `ditherMonoInto` / `ditherColorInto` (dither any cache: preview or film), `renderFilm`, `saveFile` |
 | `viewport/graphicsview.cpp` | hold click / Space to show the original, scene item replacement without leaks |
+| `viewport/renderglyphbutton.*` | render control button (QPainter, 7×7 glyph matrix: ring = Auto, bars = Paused, breathing during every render, automatic ones included: `RenderGlyphActivity` guard in `reDither` when something is computed, and in Save / Copy), anchored to the viewport's lower right corner |
+| `mainwindow_render.cpp` | render control: pause, held work (`renderDirty`, `sourceDirtyMono/Color`, `outputSizeDirty`), `renderPending` = one render, `requestOutputSize`, `renderBeforeExport` |
 
 `monoTarget` / `colorTarget` + `renderDpi` let the upstream ditherer functions render either the preview caches
 or a short-lived full-resolution cache for export, without duplicating them.
@@ -175,6 +179,13 @@ or a short-lived full-resolution cache for export, without duplicating them.
   every ink as files (or one PSD). File > Open Recent (5), Paste Image.
 - Save name = Filename Settings template (default `{name}{suffix}.{ext}`, suffix `_{dither}`); upstream proposed
   the algorithm name only.
+- **Render control** (user's mock-up `ditherista_render_glyph_only.html`): one round button in the preview's lower
+  right corner. Auto → click → Paused (settings keep changing, the last result stays, nothing renders) → click →
+  one render with every setting → Auto. While paused: `reDither` only drops the stale cache entry and sets
+  `renderDirty`; `adjustImage*` hold adjustSource; DPI / print size / preview quality are checked then hold the
+  resample (`requestOutputSize`, every former `applyOutputSize` caller goes through it); the colour picker's live
+  preview is off. Opening a picture renders anyway (stays paused). Save / Copy while changes wait render them
+  first and stay paused. Ctrl+drag export takes the picture on screen, as always.
 - Postponed by the user: dot shapes (maybe with other algorithms), histogram, dot cut-off / high-cut overlay.
 - Known open question: matrix smoothing for round dots / more grey levels at high DPI was proposed and
   postponed by the user ("je valide pour le moment").
@@ -200,6 +211,7 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | — Separation moved to the Color tab + Palette separation | done (`feature/separation-colour-tab`) |
 | — Palette editor (HEX, lock, delete, add, randomize, undo), live colour picker + CIELAB panel | done (`feature/palette-editor`, `fix/palette-tab-scroll`) |
 | 10 UI: navigation (zoom modes, drag pan, joystick, inertia, pinch, 1:1, Fit), Preferences window (colour management, preview quality, zoom/wheel, background, clipboard, file names, folders, calibration), Open Recent, Paste Image, Copy to Clipboard | done (`feature/navigation-preferences`) |
+| — Rename to Ditherista Press; render control (pause / render once) | to test (`feature/rename-press`, `feature/render-pause`) |
 
 ### Next objectives (as of 2026-10-01)
 

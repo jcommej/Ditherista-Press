@@ -197,6 +197,20 @@ void MainWindow::applyFilterScale(const QSize& working, const double dpi) {
     imageHashMono.denoiseScale = imageHashColor.denoiseScale = upscale;
 }
 
+bool MainWindow::outputSizeFits(const double dpi, const double widthMm, const double heightMm) {
+    /* false, with a notification, if the film would exceed EXPORT_MAX_PIXELS */
+    const QSize film(pixelsFor(widthMm, dpi), pixelsFor(heightMm, dpi));
+    const long long pixels = static_cast<long long>(film.width()) * film.height();
+    if (pixels > EXPORT_MAX_PIXELS) {
+        notification->showText("<font color=#ec6a5e>" + tr("TOO LARGE") + "</font>\n" +
+            tr("%1 × %2 px (%3 MP) at %4 DPI, max %5 MP.\nReduce the print size or the DPI.")
+                .arg(film.width()).arg(film.height()).arg(pixels / 1e6, 0, 'f', 0).arg(dpi, 0, 'f', 0)
+                .arg(EXPORT_MAX_PIXELS / 1'000'000), 4000);
+        return false;
+    }
+    return true;
+}
+
 bool MainWindow::applyOutputSize(const double dpi, const double widthMm, const double heightMm) {
     /* sets the film to widthMm x heightMm at dpi and resamples the preview for it, keeping every adjustment.
      * Returns false, changing nothing, if the film would exceed EXPORT_MAX_PIXELS */
@@ -205,13 +219,7 @@ bool MainWindow::applyOutputSize(const double dpi, const double widthMm, const d
         // is writing into. User input is blocked during that time, but nothing else guarantees it.
         return false;
     }
-    const QSize film(pixelsFor(widthMm, dpi), pixelsFor(heightMm, dpi));
-    const long long pixels = static_cast<long long>(film.width()) * film.height();
-    if (pixels > EXPORT_MAX_PIXELS) {
-        notification->showText("<font color=#ec6a5e>" + tr("TOO LARGE") + "</font>\n" +
-            tr("%1 × %2 px (%3 MP) at %4 DPI, max %5 MP.\nReduce the print size or the DPI.")
-                .arg(film.width()).arg(film.height()).arg(pixels / 1e6, 0, 'f', 0).arg(dpi, 0, 'f', 0)
-                .arg(EXPORT_MAX_PIXELS / 1'000'000), 4000);
+    if (!outputSizeFits(dpi, widthMm, heightMm)) {
         return false;
     }
     const double previousPreviewDpi = renderDpi;
@@ -259,7 +267,7 @@ void MainWindow::outputDpiEditedSlot() {
     if (firstLoad) {  // nothing to resample yet; the next image sets its own DPI anyway
         screenGeometry.dpi = dpi;
         updateScreenControls();
-    } else if (!applyOutputSize(dpi, printWidthMm, printHeightMm)) {
+    } else if (!requestOutputSize(dpi, printWidthMm, printHeightMm)) {
         whileBlocking(dpiCombo)->setCurrentText(QString::number(static_cast<int>(screenGeometry.dpi)));
     }
 }
@@ -267,7 +275,7 @@ void MainWindow::outputDpiEditedSlot() {
 void MainWindow::printWidthEditedSlot(const double widthMm) {
     // locked: keep the current proportions (which may differ from the file's if they were unlocked before)
     const double heightMm = aspectLockButton->isChecked() ? widthMm * printHeightMm / printWidthMm : printHeightMm;
-    if (applyOutputSize(screenGeometry.dpi, widthMm, heightMm)) {
+    if (requestOutputSize(screenGeometry.dpi, widthMm, heightMm)) {
         whileBlocking(printHeightSpin)->setValue(heightMm);
     } else {
         whileBlocking(printWidthSpin)->setValue(printWidthMm);
@@ -276,7 +284,7 @@ void MainWindow::printWidthEditedSlot(const double widthMm) {
 
 void MainWindow::printHeightEditedSlot(const double heightMm) {
     const double widthMm = aspectLockButton->isChecked() ? heightMm * printWidthMm / printHeightMm : printWidthMm;
-    if (applyOutputSize(screenGeometry.dpi, widthMm, heightMm)) {
+    if (requestOutputSize(screenGeometry.dpi, widthMm, heightMm)) {
         whileBlocking(printWidthSpin)->setValue(widthMm);
     } else {
         whileBlocking(printHeightSpin)->setValue(printHeightMm);
