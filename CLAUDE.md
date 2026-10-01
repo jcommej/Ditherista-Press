@@ -198,7 +198,26 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | 8 Per-ink LPI and angle | done (`feature/channel-angles`) |
 | 9 Presets | done (`feature/presets`) |
 | — Separation moved to the Color tab + Palette separation | done (`feature/separation-colour-tab`) |
-| 10 UI: navigation + Preferences (files, folders, calibration) | done (`feature/navigation-preferences`); dot shapes, histogram, cut-off overlay postponed |
+| — Palette editor (HEX, lock, delete, add, randomize, undo), live colour picker + CIELAB panel | done (`feature/palette-editor`, `fix/palette-tab-scroll`) |
+| 10 UI: navigation (zoom modes, drag pan, joystick, inertia, pinch, 1:1, Fit), Preferences window (colour management, preview quality, zoom/wheel, background, clipboard, file names, folders, calibration), Open Recent, Paste Image, Copy to Clipboard | done (`feature/navigation-preferences`) |
+
+### Next objectives (as of 2026-10-01)
+
+To check in real use (could not be tested here): pinch to zoom on a real touchpad / touch screen; the feel of the
+joystick and inertia (constants at the top of `viewport/graphicsview.cpp`); pasting a Copy to Clipboard into
+Photoshop (image paste carries no DPI; the file copy does); the preview of wide-gamut working profiles (shown
+unconverted, so less saturated).
+
+Postponed by the user, to propose again later:
+- **Histogram** of the adjusted picture (plotterfun has one, with clipped blacks / whites masks).
+- **Dot cut-off / high-cut overlay**: show where dots are too small to hold on the screen or close up, from LPI,
+  mesh and DPI; maybe a cut-off applied to the films.
+- **Dot shapes** (round, elliptical, line), maybe once other algorithms come in; and the older open question of
+  matrix smoothing for round dots / more grey levels at high DPI.
+
+Proposed, not decided: registration marks and ink names on exported films; a display (soft-proof) conversion for
+wide working profiles; the plotterfun items the user did not pick (collapsible panels, live re-render while
+dragging a slider, lighter preview during interaction, crop mini-view).
 
 Open report from the user: a crash on a 1500 × 1000 mm film at 300 DPI (209 MP) was **not reproduced** with
 Bayer 8×8 + LPI; the scene-item leaks fixed in phase 4 are a likely contributor. Ask for the algorithm and step
