@@ -1,5 +1,10 @@
 #include "paletteeditor.h"
 #include "ui_elements/pixelbuttonglyph.h"
+#include "ui_elements/pixelglyphs.h"
+#include <QCoreApplication>
+#include <QMouseEvent>
+#include <functional>
+#include <QVariantAnimation>
 #include "color/colorspace.h"
 #include <QFontDatabase>
 #include <QGridLayout>
@@ -39,6 +44,56 @@ QIcon swatchIcon(const QRgb colour, const qreal ratio) {
 
 }  // namespace
 
+/* the drag handle at the head of a palette row: a discreet pixel glyph, and the row's position for the first
+ * three; pressing it starts moving the row (PaletteEditor follows the pointer) */
+class PaletteDragHandle final : public QWidget {
+public:
+    std::function<void()> pressed;
+    std::function<void(const QPoint&)> moved;
+    std::function<void()> released;
+    explicit PaletteDragHandle(QWidget* parent) : QWidget(parent) {
+        setFixedSize(22, 22);
+        setCursor(Qt::OpenHandCursor);
+        setToolTip(QCoreApplication::translate("PaletteEditor", "Drag to change the order of the colours - the order of the films and of the print passes"));
+    }
+    void setPosition(const int index) {
+        position = index;
+        update();
+    }
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter painter(this);
+        const QColor ink(0x8a, 0x8a, 0x8a);  // discreet
+        PixelGlyphs::paintHandle(&painter, QRectF(1, 6, 10, 10), ink, devicePixelRatioF());
+        if (position >= 0 && position < 3) {
+            QFont font = painter.font();
+            font.setPointSizeF(font.pointSizeF() * 0.8);
+            painter.setFont(font);
+            painter.setPen(ink);
+            painter.drawText(QRect(12, 0, 10, height()), Qt::AlignCenter, QString::number(position + 1));
+        }
+    }
+    void mousePressEvent(QMouseEvent* event) override {
+        if (event->button() == Qt::LeftButton && pressed) {
+            setCursor(Qt::ClosedHandCursor);
+            pressed();
+        }
+    }
+    void mouseMoveEvent(QMouseEvent* event) override {
+        if ((event->buttons() & Qt::LeftButton) && moved) {
+            moved(event->globalPosition().toPoint());
+        }
+    }
+    void mouseReleaseEvent(QMouseEvent* event) override {
+        if (event->button() == Qt::LeftButton && released) {
+            setCursor(Qt::OpenHandCursor);
+            released();
+        }
+    }
+private:
+    int position = -1;
+};
+
 PaletteEditor::PaletteEditor(QWidget* parent) : QWidget(parent) {
     QVBoxLayout* column = new QVBoxLayout(this);
     column->setContentsMargins(0, 0, 0, 0);
@@ -52,6 +107,10 @@ PaletteEditor::PaletteEditor(QWidget* parent) : QWidget(parent) {
     rowsLayout->setSpacing(2);
     rowsLayout->addStretch(1);
     scroll->setWidget(list);
+    dropLine = new QWidget(list);
+    dropLine->setStyleSheet("background: rgb(58, 130, 220);");
+    dropLine->setAttribute(Qt::WA_TransparentForMouseEvents);
+    dropLine->hide();
     column->addWidget(scroll, 1);
 
     QGridLayout* buttons = new QGridLayout();
@@ -89,6 +148,12 @@ PaletteEditor::Row PaletteEditor::makeRow(const int index) {
         button->setToolTip(tip);
         return button;
     };
+    row.handle = new PaletteDragHandle(row.widget);
+    row.handle->pressed = [this, index]() {
+        dragFrom = dragTo = index;
+    };
+    row.handle->moved = [this](const QPoint& globalPos) { dragMoved(globalPos); };
+    row.handle->released = [this]() { dragEnded(); };
     row.swatch = tool(tr("Edit this colour in the colour picker"));
     row.swatch->setIconSize(QSize(18, 18));
     row.hex = new QLineEdit(row.widget);
@@ -102,6 +167,7 @@ PaletteEditor::Row PaletteEditor::makeRow(const int index) {
     row.remove->setIcon(icon(":/resources/trash.svg", ":/resources/trash_disabled.svg"));
     row.shuffle = tool(tr("Replace this colour with a random one"));
     row.shuffle->setIcon(icon(":/resources/shuffle.svg", ":/resources/shuffle_disabled.svg"));
+    line->addWidget(row.handle);
     line->addWidget(row.swatch);
     line->addWidget(row.hex, 1);
     line->addWidget(row.lock);
@@ -136,11 +202,81 @@ void PaletteEditor::setPalette(const PaletteEntries& palette) {
     if (editingRow >= static_cast<int>(rows.size())) {
         editingRow = -1;
     }
+    if (flashRow >= 0 && flashRow < static_cast<int>(rows.size())) {
+        flash(flashRow);  // the colour that was just moved, at its new place
+    }
+    flashRow = -1;
+}
+
+void PaletteEditor::dragMoved(const QPoint& globalPos) {
+    /* the row goes where the pointer is among the other rows; a line shows the place */
+    if (dragFrom < 0 || dragFrom >= static_cast<int>(rows.size())) {
+        return;
+    }
+    QWidget* list = rowsLayout->parentWidget();
+    const int y = list->mapFromGlobal(globalPos).y();
+    int to = 0;
+    for (int i = 0; i < static_cast<int>(rows.size()); i++) {
+        if (i != dragFrom && rows[static_cast<size_t>(i)].widget->geometry().center().y() < y) {
+            to++;
+        }
+    }
+    dragTo = to;
+    // the line: above the row that will follow the moved one, or below the last
+    std::vector<QWidget*> others;
+    for (int i = 0; i < static_cast<int>(rows.size()); i++) {
+        if (i != dragFrom) {
+            others.push_back(rows[static_cast<size_t>(i)].widget);
+        }
+    }
+    if (others.empty() || to == dragFrom) {
+        dropLine->hide();
+        return;
+    }
+    const int lineY = to < static_cast<int>(others.size()) ? others[static_cast<size_t>(to)]->geometry().top() - 2
+                                                         : others.back()->geometry().bottom() + 1;
+    dropLine->setGeometry(2, std::max(0, lineY), list->width() - 4, 2);
+    dropLine->show();
+    dropLine->raise();
+}
+
+void PaletteEditor::dragEnded() {
+    dropLine->hide();
+    const int from = dragFrom;
+    const int to = dragTo;
+    dragFrom = dragTo = -1;
+    if (from >= 0 && to >= 0 && from != to && from < static_cast<int>(entries.size()) && to < static_cast<int>(entries.size())) {
+        flashRow = to;
+        emit moveRequested(from, to);  // MainWindow reorders the palette and calls setPalette
+        flashRow = -1;
+    }
+}
+
+void PaletteEditor::flash(const int index) {
+    /* a short highlight fading out on the row that moved */
+    QWidget* row = rows[static_cast<size_t>(index)].widget;
+    QVariantAnimation* fade = new QVariantAnimation(row);
+    fade->setDuration(300);
+    fade->setStartValue(0.45);
+    fade->setEndValue(0.0);
+    connect(fade, &QVariantAnimation::valueChanged, row, [this, row, index](const QVariant& value) {
+        if (index != editingRow) {
+            row->setStyleSheet(QString("#paletteRow { background: rgba(58, 130, 220, %1); border-radius: 4px; }")
+                                   .arg(value.toDouble(), 0, 'f', 3));
+        }
+    });
+    connect(fade, &QVariantAnimation::finished, row, [this, index]() {
+        if (index < static_cast<int>(rows.size())) {
+            updateRow(static_cast<size_t>(index));
+        }
+    });
+    fade->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
 void PaletteEditor::updateRow(const size_t index) {
     const Row& row = rows[index];
     const PaletteEntry& entry = entries[index];
+    row.handle->setPosition(static_cast<int>(index));
     row.swatch->setIcon(swatchIcon(entry.colour, devicePixelRatioF()));
     if (!row.hex->hasFocus() || !row.hex->isModified()) {  // never overwrite what the user is typing
         row.hex->setText(hexColour(entry.colour));

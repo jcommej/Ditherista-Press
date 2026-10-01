@@ -109,7 +109,16 @@ void MainWindow::refreshSeparationInks() {
     const int view = separationViewCombo->currentIndex();
     QSignalBlocker blocker(separationViewCombo);
     separationViewCombo->clear();
-    separationViewCombo->addItem(tr("Simulated print"));
+    if (separationMode == SeparationMode::Palette) {
+        separationViewCombo->addItem(tr("Print - side by side"));
+        separationViewCombo->setItemData(0, tr("Every colour as dithered, next to each other, nothing mixed"), Qt::ToolTipRole);
+        separationViewCombo->addItem(tr("Print - superposed"));
+        separationViewCombo->setItemData(1, tr("The passes in palette order, inks over paper (subtractive): where inks "
+                                               "overprint they mix. An approximation, not a colour proof"),
+                                         Qt::ToolTipRole);
+    } else {
+        separationViewCombo->addItem(tr("Simulated print"));
+    }
     for (const InkChannel& channel : separationInks()) {
         separationViewCombo->addItem(tr("%1 film").arg(channel.name));
     }
@@ -134,7 +143,10 @@ void MainWindow::separationModeChangedSlot(int) {
     }
 }
 
-void MainWindow::separationViewChangedSlot(int) {
+void MainWindow::separationViewChangedSlot(const int view) {
+    if (separationMode == SeparationMode::Palette && view >= 0 && view < separationFilmOffset()) {
+        printSuperposed = view == 1;  // the print Save and Copy write
+    }
     if (!firstLoad && separationActive()) {
         if (renderPaused) {
             renderDirty = true;  // films may be stale: shown once the render control resumes
@@ -158,8 +170,10 @@ std::vector<QImage> MainWindow::renderSeparation(const QImage& working, const do
     });
     if (separationMode == SeparationMode::Palette) {
         std::vector<bool> wanted;
+        std::vector<bool> overprint;  // in palette order: the order of the passes
         for (const ChannelSettings& ink : settings) {
             wanted.push_back(ink.enabled);
+            overprint.push_back(ink.overprint);
         }
         std::vector<QImage> films;
         if (preview) {  // the Composite view's own dither, cached
@@ -167,6 +181,7 @@ std::vector<QImage> MainWindow::renderSeparation(const QImage& working, const do
                 ditherColorInto(imageHashColor);
             }
             films = splitByPalette(*imageHashColor.getDitheredImage(current_dither_number), paletteColours(), wanted);
+            extendUnderFollowing(films, overprint);
         } else {
             ImageHashColor film;
             film.copyAdjustmentsFrom(imageHashColor);
@@ -175,6 +190,7 @@ std::vector<QImage> MainWindow::renderSeparation(const QImage& working, const do
             film.setSourceImage(&working, true);
             ditherColorInto(film);  // same palette as the preview
             films = splitByPalette(*film.getDitheredImage(current_dither_number), paletteColours(), wanted);
+            extendUnderFollowing(films, overprint);
         }
         renderDpi = previousDpi;
         return films;
@@ -210,16 +226,30 @@ std::vector<QImage> MainWindow::renderSeparation(const QImage& working, const do
     return films;
 }
 
+int MainWindow::separationFilmOffset() const {
+    return separationMode == SeparationMode::Palette ? 2 : 1;  // the two print views, or the simulated print
+}
+
+QImage MainWindow::separationPrint(const std::vector<QImage>& films) const {
+    /* the simulated print: palette inks side by side or superposed (the last chosen view), CMYK multiplied on
+     * white, RGB added on black */
+    if (separationMode == SeparationMode::Palette) {
+        return printSuperposed ? superposedPrint(films, separationInks()) : sideBySidePrint(films, separationInks());
+    }
+    return compositeFromFilms(films, separationInks(), separationMode == SeparationMode::RGB);
+}
+
 QImage MainWindow::separationView(const std::vector<QImage>& films) const {
     /* what the View selector shows: the simulated print, or one film */
     const int view = separationViewCombo->currentIndex();
-    if (view <= 0 || view > static_cast<int>(films.size())) {
-        const QImage print = compositeFromFilms(films, separationInks(), separationMode == SeparationMode::RGB);
+    const int offset = separationFilmOffset();
+    if (view < offset || view - offset >= static_cast<int>(films.size())) {
+        const QImage print = separationPrint(films);
         if (!print.isNull()) {
             return print;
         }
-    } else if (!films[static_cast<size_t>(view - 1)].isNull()) {
-        return films[static_cast<size_t>(view - 1)];
+    } else if (!films[static_cast<size_t>(view - offset)].isNull()) {
+        return films[static_cast<size_t>(view - offset)];
     }
     QImage blank(previewImage.size(), QImage::Format_RGB32);  // every ink disabled, or this one
     blank.fill(Qt::white);
@@ -276,7 +306,7 @@ bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* wr
             }
         }
         const PsdInkLayout layout = static_cast<PsdInkLayout>(separationPsdLayoutCombo->currentData().toInt());
-        QImage composite = withProfile(compositeFromFilms(films, channels, additive));  // spots stay profile-less
+        QImage composite = withProfile(separationPrint(films));  // spots stay profile-less
         if (layout == PsdInkLayout::SpotChannels && !separationPsdCompositeCheck->isChecked()) {
             composite.fill(Qt::white);  // with layers, the image must match what the layers show
         }
@@ -284,7 +314,7 @@ bool MainWindow::saveSeparation(const QString& fileName, QString* error, int* wr
         return *written == 1;
     }
     if (separationExportCombo->currentIndex() == 1) {
-        *written = write(fileName, withProfile(compositeFromFilms(films, channels, additive))) ? 1 : 0;
+        *written = write(fileName, withProfile(separationPrint(films))) ? 1 : 0;
         return *written == 1;
     }
     for (size_t i = 0; i < films.size(); i++) {
@@ -358,7 +388,12 @@ void MainWindow::rebuildChannelRows() {
     grid->setColumnStretch(1, 1);
     grid->setColumnStretch(2, 1);
     grid->addWidget(new QLabel(tr("Ink"), channelRows), 0, 0);
-    if (!palette) {
+    if (palette) {
+        QLabel* header = new QLabel(tr("Overprint"), channelRows);
+        header->setToolTip(tr("The ink also prints under the inks that come after it in the palette, without knockout: "
+                              "they overprint it, and the superposed print shows them mixing"));
+        grid->addWidget(header, 0, 2, Qt::AlignRight);
+    } else {
         grid->addWidget(new QLabel(tr("LPI"), channelRows), 0, 1);
         grid->addWidget(new QLabel(tr("Angle"), channelRows), 0, 2);
     }
@@ -380,7 +415,15 @@ void MainWindow::rebuildChannelRows() {
             QPixmap swatch(12, 12);
             swatch.fill(QColor::fromRgb(inks[i].ink));
             enabled->setIcon(QIcon(swatch));
-            grid->addWidget(enabled, row, 0, 1, 3);
+            grid->addWidget(enabled, row, 0, 1, 2);
+            QCheckBox* overprint = new QCheckBox(channelRows);
+            overprint->setChecked(settings[i].overprint);
+            overprint->setToolTip(tr("%1 also prints under the inks after it (no knockout)").arg(inks[i].name));
+            grid->addWidget(overprint, row, 2, Qt::AlignRight);
+            connect(overprint, &QCheckBox::toggled, this, [this, i, changed](const bool on) {
+                currentChannelSettings()[i].overprint = on;
+                changed();
+            });
             continue;
         }
         QDoubleSpinBox* lpi = new QDoubleSpinBox(channelRows);

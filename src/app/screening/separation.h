@@ -64,4 +64,20 @@ QImage compositeFromFilms(const std::vector<QImage>& films, const std::vector<In
 std::vector<QImage> splitByPalette(const QImage& dithered, const std::vector<QRgb>& palette,
                                    const std::vector<bool>& wanted);
 
+/* Palette films in print order (the order of the palette: film 0 is the first pass).
+ * Overprint: an ink whose `overprint` is set also prints under every enabled ink that follows it - no knockout
+ * there - so its film covers their areas too. Null films (disabled inks) are left alone and extend nothing. */
+void extendUnderFollowing(std::vector<QImage>& films, const std::vector<bool>& overprint);
+
+/* The print, side by side: every pixel takes the colour of the last ink printed there, nothing mixes; on white
+ * where no ink prints. Without overprint it is the colour dither itself. */
+QImage sideBySidePrint(const std::vector<QImage>& films, const std::vector<InkChannel>& inks);
+
+/* The print, superposed: the passes in order over white paper, as inks on paper - subtractive. Each ink lets
+ * through, in linear light, the share of each channel its colour has (its transmission), and also hides a little
+ * of what is under it (SUPERPOSED_HIDING), so the order of the passes shows where inks overlap. A rough
+ * approximation of real inks, not a colour-exact proof. */
+constexpr double SUPERPOSED_HIDING = 0.25;
+QImage superposedPrint(const std::vector<QImage>& films, const std::vector<InkChannel>& inks);
+
 #endif // SEPARATION_H

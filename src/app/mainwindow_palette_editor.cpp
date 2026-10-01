@@ -105,6 +105,7 @@ void MainWindow::setupPaletteEditor() {
         notification->showText(tr("palette randomized (seed %1)\nCtrl+Z to go back").arg(seed), 2000);
     });
     connect(paletteEditor, &PaletteEditor::pickRequested, this, &MainWindow::pickPaletteColour);
+    connect(paletteEditor, &PaletteEditor::moveRequested, this, &MainWindow::movePaletteColour);
     connect(paletteEditor, &PaletteEditor::saveRequested, this, [this]() { savePaintNetPalette(currentPaletteEntries()); });
     connect(paletteEditor, &PaletteEditor::loadRequested, this, [this]() {
         const QString filter = tr("Palettes") + " (" + PALETTE_FILTERS.join(" ") + ")";
@@ -130,6 +131,57 @@ void MainWindow::setupPaletteEditor() {
 
     // palette edits are steps of Edit > Undo, the history of every setting (mainwindow_history.cpp); paletteHistory
     // still serves the colour picker's own Ctrl+Z within a session
+}
+
+void MainWindow::movePaletteColour(const int from, const int to) {
+    /* a colour dragged to another place: the order of the palette is the order of the films (names, PSD, files)
+     * and of the print passes in the superposed print. The colours do not change, and since the ditherers look
+     * for the nearest colour among all of them, neither does the dithered picture: no new render, only the films
+     * follow. Each ink's settings (on/off, overprint, LPI, angle) move with their colour. */
+    PaletteEntries palette = currentPaletteEntries();
+    const int size = static_cast<int>(palette.size());
+    if (isDithering || pickerIndex >= 0 || from < 0 || to < 0 || from >= size || to >= size || from == to) {
+        return;
+    }
+    const PaletteEntry moved = palette[static_cast<size_t>(from)];
+    palette.erase(palette.begin() + from);
+    palette.insert(palette.begin() + to, moved);
+    const auto carryInks = [this, from, to, size]() {
+        std::vector<ChannelSettings>& inks = channelSettings[static_cast<int>(SeparationMode::Palette)];
+        if (static_cast<int>(inks.size()) == size) {
+            const ChannelSettings ink = inks[static_cast<size_t>(from)];
+            inks.erase(inks.begin() + from);
+            inks.insert(inks.begin() + to, ink);
+        }
+    };
+    if (ui->paletteSourceWidget->currentIndex() != PALETTE_CUSTOM) {
+        editPalette(palette, carryInks);  // it becomes the custom palette, the usual way
+        return;
+    }
+    paletteHistory.record(currentPaletteEntries());
+    carryInks();
+    BytePalette* colours = BytePalette_new(palette.size());
+    customLocks.clear();
+    for (size_t i = 0; i < palette.size(); i++) {
+        const ByteColor c = {static_cast<uint8_t>(qRed(palette[i].colour)), static_cast<uint8_t>(qGreen(palette[i].colour)),
+                             static_cast<uint8_t>(qBlue(palette[i].colour)), 255};
+        BytePalette_set(colours, i, &c);
+        customLocks.push_back(palette[i].locked);
+    }
+    BytePalette_free(customPalette);
+    customPalette = colours;
+    const FloatColor weights = cachedPalette->lab_weights;
+    updateCachedPalette(customPalette);  // the lookup cache follows the new indices; the dithered pictures stay
+    cachedPalette->lab_weights = weights;
+    updatePaletteColorSwatches(cachedPalette->target_palette);
+    if (separationMode == SeparationMode::Palette) {
+        refreshSeparationInks();  // films renamed and reordered
+    } else {
+        invalidateSeparation();
+    }
+    if (!firstLoad) {
+        reDither(false);
+    }
 }
 
 PaletteEntries MainWindow::currentPaletteEntries() const {

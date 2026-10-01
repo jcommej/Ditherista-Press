@@ -1,4 +1,5 @@
 #include "separation.h"
+#include <array>
 #include "libdither.h"
 #include <QObject>
 #include <algorithm>
@@ -168,6 +169,102 @@ QImage compositeFromFilms(const std::vector<QImage>& films, const std::vector<In
                 }
             }
             o[x] = qRgb(r, g, b);
+        }
+    }
+    return out;
+}
+
+namespace {
+bool inked(const QImage& film, const int x, const int y) {
+    /* black on a Format_RGB32 film (splitByPalette) */
+    return qRed(reinterpret_cast<const QRgb*>(film.constScanLine(y))[x]) == 0;
+}
+
+double toLinear(const int channel) {
+    const double c = channel / 255.0;
+    return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+}
+
+int toSrgb(const double linear) {
+    const double l = std::clamp(linear, 0.0, 1.0);
+    const double c = l <= 0.0031308 ? l * 12.92 : 1.055 * std::pow(l, 1.0 / 2.4) - 0.055;
+    return static_cast<int>(std::lround(c * 255.0));
+}
+
+const QImage* firstFilm(const std::vector<QImage>& films) {
+    const auto first = std::find_if(films.begin(), films.end(), [](const QImage& f) { return !f.isNull(); });
+    return first == films.end() ? nullptr : &*first;
+}
+}  // namespace
+
+void extendUnderFollowing(std::vector<QImage>& films, const std::vector<bool>& overprint) {
+    for (size_t i = 0; i < films.size() && i < overprint.size(); i++) {
+        if (!overprint[i] || films[i].isNull()) {
+            continue;
+        }
+        for (size_t j = i + 1; j < films.size(); j++) {
+            if (films[j].isNull() || films[j].size() != films[i].size()) {
+                continue;
+            }
+            for (int y = 0; y < films[i].height(); y++) {
+                QRgb* under = reinterpret_cast<QRgb*>(films[i].scanLine(y));
+                for (int x = 0; x < films[i].width(); x++) {
+                    if (inked(films[j], x, y)) {
+                        under[x] = qRgb(0, 0, 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+QImage sideBySidePrint(const std::vector<QImage>& films, const std::vector<InkChannel>& inks) {
+    const QImage* first = firstFilm(films);
+    if (first == nullptr || films.size() != inks.size()) {
+        return {};
+    }
+    QImage out(first->size(), QImage::Format_RGB32);
+    out.fill(Qt::white);
+    for (size_t i = 0; i < films.size(); i++) {  // later passes over earlier ones
+        if (films[i].isNull()) {
+            continue;
+        }
+        for (int y = 0; y < out.height(); y++) {
+            QRgb* o = reinterpret_cast<QRgb*>(out.scanLine(y));
+            for (int x = 0; x < out.width(); x++) {
+                if (inked(films[i], x, y)) {
+                    o[x] = inks[i].ink | 0xFF000000u;
+                }
+            }
+        }
+    }
+    return out;
+}
+
+QImage superposedPrint(const std::vector<QImage>& films, const std::vector<InkChannel>& inks) {
+    const QImage* first = firstFilm(films);
+    if (first == nullptr || films.size() != inks.size()) {
+        return {};
+    }
+    std::vector<std::array<double, 3>> transmission;
+    for (const InkChannel& ink : inks) {
+        transmission.push_back({toLinear(qRed(ink.ink)), toLinear(qGreen(ink.ink)), toLinear(qBlue(ink.ink))});
+    }
+    QImage out(first->size(), QImage::Format_RGB32);
+    for (int y = 0; y < out.height(); y++) {
+        QRgb* o = reinterpret_cast<QRgb*>(out.scanLine(y));
+        for (int x = 0; x < out.width(); x++) {
+            std::array<double, 3> light = {1.0, 1.0, 1.0};  // white paper
+            for (size_t i = 0; i < films.size(); i++) {
+                if (films[i].isNull() || !inked(films[i], x, y)) {
+                    continue;
+                }
+                for (size_t c = 0; c < 3; c++) {
+                    const double t = transmission[i][c];
+                    light[c] = (1.0 - SUPERPOSED_HIDING) * light[c] * t + SUPERPOSED_HIDING * t;
+                }
+            }
+            o[x] = qRgb(toSrgb(light[0]), toSrgb(light[1]), toSrgb(light[2]));
         }
     }
     return out;

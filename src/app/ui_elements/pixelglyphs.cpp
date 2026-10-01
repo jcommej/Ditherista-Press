@@ -140,4 +140,14 @@ void paintStatusDot(QPainter* painter, const QRectF& box, const double fill, con
     painter->restore();
 }
 
+void paintHandle(QPainter* painter, const QRectF& box, const QColor& ink, const double devicePixelRatio) {
+    const Grid grid = place(box, 5, 5, devicePixelRatio);
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, false);
+    for (const int y : {0, 2, 4}) {
+        pixels(painter, grid, 0, y, 5, 1, ink);
+    }
+    painter->restore();
+}
+
 }  // namespace PixelGlyphs

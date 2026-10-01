@@ -30,6 +30,8 @@ SOURCES += \
     tst_render.cpp \
     tst_favorites.cpp \
     tst_history.cpp \
+    tst_order.cpp \
+    $$APP/palette/paletteeditor.cpp \
     $$APP/history/sessionhistory.cpp \
     $$APP/history/abandonedrenders.cpp \
     $$APP/preferences/preferences.cpp \
@@ -68,4 +70,5 @@ HEADERS += \
     $$APP/palette/labpanel.h \
     $$APP/palette/colourpickerdialog.h \
     $$APP/ui_elements/mouseeventfilter.h \
-    $$APP/treewidget.h
+    $$APP/treewidget.h \
+    $$APP/palette/paletteeditor.h

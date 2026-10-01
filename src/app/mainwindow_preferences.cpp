@@ -386,7 +386,7 @@ void MainWindow::copyToClipboard() {
         } else if (channel == Print && preferences.clipboardContent == Preferences::ClipboardContent::Composite) {
             pixels = withProfile(toFilmImage(separationView(films)));  // what the View selector shows
         } else {
-            pixels = withProfile(toFilmImage(compositeFromFilms(films, inks, separationMode == SeparationMode::RGB)));
+            pixels = withProfile(toFilmImage(separationPrint(films)));
         }
         if (channel == Every) {
             if (format == "psd") {  // one document holding every ink, as Save writes it
@@ -395,7 +395,7 @@ void MainWindow::copyToClipboard() {
                 for (size_t i = 0; i < films.size() && i < inks.size(); i++) {
                     if (!films[i].isNull()) spots.push_back({inks[i].name, inks[i].ink, films[i]});
                 }
-                QImage composite = withProfile(compositeFromFilms(films, inks, separationMode == SeparationMode::RGB));
+                QImage composite = withProfile(separationPrint(films));
                 ok = writePsd(path, composite, spots, screenGeometry.dpi, &error,
                               static_cast<PsdInkLayout>(separationPsdLayoutCombo->currentData().toInt()),
                               separationMode == SeparationMode::RGB);

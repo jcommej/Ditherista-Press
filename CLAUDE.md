@@ -216,6 +216,16 @@ or a short-lived full-resolution cache for export, without duplicating them.
 - **Palette themes** (user: "se baser sur l'existant, simplicité"): no new algorithm, no stored theme - a theme only fills
   the reduced palette's fields, so presets and undo carry it for free. The reduction combo mapped index + 1 upstream
   (Median Cut ran Wu, Wu ran KD-Tree, KD-Tree ran Median Cut): fixed, the method shown is the one used.
+- **Palette order** = order of the films (names `01_RRGGBB`, files, PSD channels and layers - 01 just above Paper) and
+  of the print passes. One source of truth: the palette's own list; dragging a row by its pixel handle
+  (`PaletteEditor`, numbers on the first 3) moves the colour, its ink settings move with it (`movePaletteColour`),
+  no re-dither (nearest colour among all, so the dithered picture does not depend on the order - tested).
+- **Overprint** per palette ink (user's choice): the ink also prints under every enabled ink after it, no knockout
+  (`extendUnderFollowing`, the exported films too). View: Print - side by side (last ink wins, = the colour dither
+  without overprint) / Print - superposed (subtractive: transmission in linear light, 25 % hiding so the order
+  shows; called an approximation in the UI). Save / Copy use the last print view chosen. Composite mode unchanged.
+- Custom palette question: "Don't ask again" + Preferences > Color Management. Themes on the custom page rebuild
+  from the picture, locked colours kept first.
 - Postponed by the user: dot shapes (maybe with other algorithms), histogram, dot cut-off / high-cut overlay.
 - Known open question: matrix smoothing for round dots / more grey levels at high DPI was proposed and
   postponed by the user ("je valide pour le moment").
@@ -244,7 +254,7 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | — Rename to Ditherista Press; render control (pause / render once) | to test (`feature/rename-press`, `feature/render-pause`) |
 | — Favourite ditherers (stars), pixel controls (padlock, reset cross, status dot) | to test (`feature/favorite-ditherers`, from `feature/render-pause`) |
 | — Global undo / redo, stopping a render | to test (`feature/undo-stop`, from `feature/favorite-ditherers`) |
-| — Palette themes | to test (`feature/palette-presets`, from `feature/undo-stop`) |
+| — Palette themes; custom palette question, themes on custom, colour order, overprint / superposed print | to test (`feature/palette-presets`, from `feature/undo-stop`) |
 
 ### Next objectives (as of 2026-10-01)
 
