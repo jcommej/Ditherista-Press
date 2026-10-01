@@ -24,6 +24,8 @@ void Preferences::load(QSettings& settings) {
     }
     workingProfile = settings.value("color/workingProfile", defaults.workingProfile).toString();
     embedProfile = settings.value("color/embedProfile", defaults.embedProfile).toBool();
+    customPaletteReplace = static_cast<CustomPaletteReplace>(std::clamp(
+        settings.value("color/customPaletteReplace", static_cast<int>(defaults.customPaletteReplace)).toInt(), 0, 2));
     clipboardContent = static_cast<ClipboardContent>(std::clamp(settings.value("clipboard/content", static_cast<int>(defaults.clipboardContent)).toInt(), 0, 1));
     clipboardFormat = settings.value("clipboard/format", defaults.clipboardFormat).toString();
     if (clipboardFormat != "tif" && clipboardFormat != "psd") {
@@ -62,6 +64,7 @@ void Preferences::save(QSettings& settings) const {
     settings.setValue("view/previewQuality", previewQuality);
     settings.setValue("color/workingProfile", workingProfile);
     settings.setValue("color/embedProfile", embedProfile);
+    settings.setValue("color/customPaletteReplace", static_cast<int>(customPaletteReplace));
     settings.setValue("clipboard/content", static_cast<int>(clipboardContent));
     settings.setValue("clipboard/format", clipboardFormat);
     settings.setValue("recent/files", recentFiles);

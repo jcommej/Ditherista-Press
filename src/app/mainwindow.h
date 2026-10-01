@@ -179,6 +179,7 @@ private:
     QComboBox* paletteThemeCombo = nullptr;
     void setupPaletteThemes();
     void updatePaletteThemeCombo();  // the theme the fields match, or Custom
+    void rebuildCustomPalette(const struct PaletteTheme& theme);  // custom page: from the picture, locks kept
     [[nodiscard]] PaletteEntries currentPaletteEntries() const;  // the palette the colour ditherers use
     // one undoable step: records the current palette, runs `beforeApply` (e.g. to realign the separation's
     // inks), applies; nothing happens if the user cancels replacing an earlier custom palette

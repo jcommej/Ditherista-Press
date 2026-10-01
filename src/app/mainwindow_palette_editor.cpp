@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include <QCheckBox>
 #include "consts.h"
 #include "color/colorspace.h"
 #include <QFile>
@@ -154,12 +155,25 @@ void MainWindow::editPalette(const PaletteEntries& edited, const std::function<v
         return;
     }
     if (ui->paletteSourceWidget->currentIndex() != PALETTE_CUSTOM && customPalette != nullptr) {
-        // the edit replaces the custom palette made earlier: offer to keep it, as Ditherista always has
-        const QMessageBox::StandardButton reply = QMessageBox::question(
-            this, tr("Custom Palette Exists"),
-            tr("Changing the current palette will create a new custom palette.\n"
-               "Do you want to save the existing palette?"),
-            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+        // the edit replaces the custom palette made earlier: offer to keep it, as Ditherista always has, unless
+        // "Don't ask again" (Preferences > Color Management) settled the answer
+        QMessageBox::StandardButton reply = QMessageBox::No;
+        if (preferences.customPaletteReplace == Preferences::CustomPaletteReplace::Save) {
+            reply = QMessageBox::Yes;
+        } else if (preferences.customPaletteReplace == Preferences::CustomPaletteReplace::Ask) {
+            QMessageBox box(QMessageBox::Question, tr("Custom Palette Exists"),
+                            tr("Changing the current palette will create a new custom palette.\n"
+                               "Do you want to save the existing palette?"),
+                            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, this);
+            QCheckBox* dontAsk = new QCheckBox(tr("Don't ask again (Preferences > Color Management)"), &box);
+            box.setCheckBox(dontAsk);
+            reply = static_cast<QMessageBox::StandardButton>(box.exec());
+            if (dontAsk->isChecked() && reply != QMessageBox::Cancel) {
+                preferences.customPaletteReplace = reply == QMessageBox::Yes ? Preferences::CustomPaletteReplace::Save
+                                                                             : Preferences::CustomPaletteReplace::Replace;
+                savePreferences();
+            }
+        }
         if (reply == QMessageBox::Cancel) {
             paletteEditor->setPalette(before);  // puts back what the list shows, e.g. a lock just clicked
             return;

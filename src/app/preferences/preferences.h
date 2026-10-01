@@ -58,6 +58,10 @@ struct Preferences {
     // colour management: the working space pictures are converted to, embedded in colour exports
     QString workingProfile = "srgb";  // see workingProfiles()
     bool embedProfile = true;
+    // an edit of a built-in (or file, or reduced) palette replaces the custom palette made earlier: ask whether to
+    // save that one to a file first (upstream), or always save it, or replace it without asking
+    enum class CustomPaletteReplace { Ask, Save, Replace };
+    CustomPaletteReplace customPaletteReplace = CustomPaletteReplace::Ask;
     // clipboard: Copy to Clipboard puts the film as an image, plus files for programs that paste files
     // when separating: copy the simulated print, or ask which channel (one ink, or every ink as files)
     enum class ClipboardContent { Composite, AskChannel };

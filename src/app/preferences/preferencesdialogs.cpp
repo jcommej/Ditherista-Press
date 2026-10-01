@@ -224,6 +224,17 @@ PreferencesDialog::PreferencesDialog(Preferences* preferences, const FileNameFie
         this->preferences->embedProfile = on;
         changedNow(Change::Other);
     });
+    column->addWidget(label(tr("When an Edit Replaces the Custom Palette")));
+    column->addWidget(choice<Preferences::CustomPaletteReplace>(
+        this, {{tr("Ask whether to save it first (default)"), Preferences::CustomPaletteReplace::Ask},
+               {tr("Always save it to a file first"), Preferences::CustomPaletteReplace::Save},
+               {tr("Replace it without asking"), Preferences::CustomPaletteReplace::Replace}},
+        preferences->customPaletteReplace, [this, changedNow](const Preferences::CustomPaletteReplace choice) {
+            this->preferences->customPaletteReplace = choice;
+            changedNow(Change::Other);
+        }));
+    column->addWidget(hint(tr("Editing a built-in, file or reduced palette makes it the custom palette, in place of "
+                              "the one made before. \"Don't ask again\" in that question sets this choice.")));
 
     // Preview Quality
     column->addWidget(sectionHeader(Section::PreviewQuality, ":/resources/pref_preview.svg", tr("Preview Quality")));
