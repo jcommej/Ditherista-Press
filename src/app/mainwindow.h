@@ -226,6 +226,7 @@ private:
     bool sourceDirtyMono = false;   // adjustments changed while paused: adjustSource still to run
     bool sourceDirtyColor = false;
     bool outputSizeDirty = false;   // DPI, print size or preview quality changed while paused: resample still to run
+    void setupFavoriteDitherers();  // favourite stars of both ditherer lists, kept in the preferences
     void setupRenderControl();
     void renderButtonClickedSlot();
     void renderPending();           // the held work, then one render

@@ -103,6 +103,7 @@ private slots:
         written.clipboardContent = Preferences::ClipboardContent::AskChannel;
         written.clipboardFormat = "tif";
         written.recentFiles = {"a.png", "b.png"};
+        written.favoriteDitherers = {2, 80, 1005};  // order of adding kept, mono and colour ids
         {
             QSettings settings(path, QSettings::IniFormat);
             written.save(settings);
@@ -119,6 +120,7 @@ private slots:
         QCOMPARE(read.clipboardContent, Preferences::ClipboardContent::AskChannel);
         QCOMPARE(read.clipboardFormat, QString("tif"));
         QCOMPARE(read.recentFiles, QStringList({"a.png", "b.png"}));
+        QCOMPARE(read.favoriteDitherers, QList<int>({2, 80, 1005}));
     }
 
     void badValuesFallBackToDefaults() {

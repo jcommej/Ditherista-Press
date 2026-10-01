@@ -37,6 +37,7 @@ SOURCES += \
     batch/ditherresults.cpp \
     batch/fileexistsdialog.cpp \
     ui_elements/mouseeventfilter.cpp \
+    ui_elements/favoritestar.cpp \
     ui_elements/stackedwidget.cpp \
     ui_elements/notificationlabel.cpp \
     ui_elements/elidelabel.cpp \
@@ -103,6 +104,7 @@ HEADERS += \
     ui_elements/notificationlabel.h \
     ui_elements/elidelabel.h \
     ui_elements/mouseeventfilter.h \
+    ui_elements/favoritestar.h \
     ui_elements/messagebox.h \
     ui_elements/doublepushbutton.h \
     ui_elements/doublelabel.h \

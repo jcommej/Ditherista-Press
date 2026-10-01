@@ -1,6 +1,12 @@
 #include "treewidget.h"
 #include "treewidgetdelegate.h"
+#include "ui_elements/favoritestar.h"
+#include <QHelpEvent>
 #include <QKeyEvent>
+#include <QScrollBar>
+#include <QSignalBlocker>
+#include <QToolTip>
+#include <algorithm>
 
 /*
  * TreeWidget manages all info about the currently selected ditherer.
@@ -14,6 +20,21 @@ TreeWidget::TreeWidget(QWidget* parent) : QTreeWidget(parent) {
     TreeWidgetDelegate* delegate = new TreeWidgetDelegate(this);
     setItemDelegate(delegate);
     connect(this, SIGNAL(itemPressed(QTreeWidgetItem*, int)), this, SLOT(treeWidgetItemChangedSlot(QTreeWidgetItem*, int)));
+    // favourite stars: a few frames while one fills or empties, then the rows move
+    viewport()->setAttribute(Qt::WA_Hover);  // the star under the pointer shows a little more
+    starTimer.setInterval(16);
+    connect(&starTimer, &QTimer::timeout, this, [this]() {
+        for (auto it = starAnimations.begin(); it != starAnimations.end();) {
+            it = it.value().clock.elapsed() > FavoriteStar::ANIMATION_MS ? starAnimations.erase(it) : std::next(it);
+        }
+        if (starAnimations.isEmpty()) {
+            starTimer.stop();
+        }
+        viewport()->update();
+    });
+    reorderTimer.setSingleShot(true);
+    reorderTimer.setInterval(static_cast<int>(FavoriteStar::ANIMATION_MS) + 30);
+    connect(&reorderTimer, &QTimer::timeout, this, &TreeWidget::applyFavoriteOrder);
 
     // TODO temporary disabled (batch dithering)
 //    // context menu setup
@@ -32,9 +53,129 @@ void TreeWidget::mousePressEvent(QMouseEvent* event) {
         // TODO temporary disabled (batch dithering)
         // showContextMenuSlot(event->pos());
     } else if (event->button() == Qt::LeftButton) {
-        QTreeWidget::mousePressEvent(event);
+        QTreeWidgetItem* item = nullptr;
+        starPressed = onStar(event->pos(), &item);
+        if (starPressed) {
+            toggleFavoriteItem(item);  // not passed on: the ditherer is not selected
+        } else {
+            QTreeWidget::mousePressEvent(event);
+        }
     }
     event->accept();
+}
+
+void TreeWidget::mouseReleaseEvent(QMouseEvent* event) {
+    if (starPressed) {
+        starPressed = false;
+        event->accept();
+        return;
+    }
+    QTreeWidget::mouseReleaseEvent(event);
+}
+
+void TreeWidget::mouseDoubleClickEvent(QMouseEvent* event) {
+    /* a quick second click on a star is a second toggle, as two separate clicks would be */
+    QTreeWidgetItem* item = nullptr;
+    if (event->button() == Qt::LeftButton && onStar(event->pos(), &item)) {
+        starPressed = true;
+        toggleFavoriteItem(item);
+        event->accept();
+        return;
+    }
+    QTreeWidget::mouseDoubleClickEvent(event);
+}
+
+bool TreeWidget::viewportEvent(QEvent* event) {
+    if (event->type() == QEvent::ToolTip) {
+        const QHelpEvent* help = static_cast<QHelpEvent*>(event);
+        QTreeWidgetItem* item = nullptr;
+        if (onStar(help->pos(), &item)) {
+            const bool favourite = isFavorite(item->data(ITEM_DATA_DSUBTYPE, Qt::UserRole).toInt());
+            QToolTip::showText(help->globalPos(), favourite ? tr("Remove from favourites") : tr("Add to favourites"),
+                               viewport(), TreeWidgetDelegate::starRect(visualItemRect(item)));
+            return true;
+        }
+    }
+    return QTreeWidget::viewportEvent(event);
+}
+
+bool TreeWidget::onStar(const QPoint& pos, QTreeWidgetItem** item) const {
+    /* `pos` in the viewport; a little margin around the star makes it easier to hit */
+    QTreeWidgetItem* under = itemAt(pos);
+    if (under == nullptr || !TreeWidgetDelegate::starRect(visualItemRect(under)).adjusted(-3, -3, 3, 3).contains(pos)) {
+        return false;
+    }
+    if (item != nullptr) {
+        *item = under;
+    }
+    return true;
+}
+
+void TreeWidget::toggleFavoriteItem(QTreeWidgetItem* item) {
+    const int id = item->data(ITEM_DATA_DSUBTYPE, Qt::UserRole).toInt();
+    const bool favourite = toggleFavorite(favoriteIds, id);
+    StarAnimation& animation = starAnimations[id];
+    animation.from = !favourite;
+    animation.to = favourite;
+    animation.clock.start();
+    starTimer.start();
+    reorderTimer.start();  // again if another star was clicked meanwhile: the rows move once, at the end
+    emit favoritesChanged();
+}
+
+void TreeWidget::starState(const int id, bool* from, bool* to, double* t) const {
+    const auto it = starAnimations.constFind(id);
+    if (it == starAnimations.constEnd()) {
+        *from = *to = isFavorite(id);
+        *t = 1.0;
+        return;
+    }
+    *from = it.value().from;
+    *to = it.value().to;
+    *t = std::min(1.0, static_cast<double>(it.value().clock.elapsed()) / FavoriteStar::ANIMATION_MS);
+}
+
+void TreeWidget::setFavorites(const QList<int>& ids) {
+    favoriteIds.clear();
+    for (const int id : ids) {
+        for (int i = 0; i < topLevelItemCount(); i++) {
+            if (topLevelItem(i)->data(ITEM_DATA_DSUBTYPE, Qt::UserRole).toInt() == id && !favoriteIds.contains(id)) {
+                favoriteIds.append(id);
+            }
+        }
+    }
+    applyFavoriteOrder();
+}
+
+void TreeWidget::applyFavoriteOrder() {
+    /* favourites on top in the order they were added, then the others in the order the list was built. The selected
+     * ditherer stays selected and the list does not scroll. */
+    QTreeWidgetItem* current = currentItem();
+    const int scroll = verticalScrollBar()->value();
+    std::vector<QTreeWidgetItem*> items;
+    while (topLevelItemCount() > 0) {
+        items.push_back(takeTopLevelItem(0));
+    }
+    std::sort(items.begin(), items.end(), [](const QTreeWidgetItem* a, const QTreeWidgetItem* b) {
+        return a->data(ITEM_DATA_COUNT, Qt::UserRole).toInt() < b->data(ITEM_DATA_COUNT, Qt::UserRole).toInt();
+    });
+    std::vector<int> ids;
+    for (const QTreeWidgetItem* item : items) {
+        ids.push_back(item->data(ITEM_DATA_DSUBTYPE, Qt::UserRole).toInt());
+    }
+    favoritesOnTop = 0;
+    for (const int id : favoriteOrder(ids, favoriteIds)) {
+        const auto it = std::find(ids.begin(), ids.end(), id);
+        addTopLevelItem(items[static_cast<size_t>(it - ids.begin())]);
+        favoritesOnTop += isFavorite(id) ? 1 : 0;
+    }
+    if (current != nullptr) {
+        const QSignalBlocker blocker(this);  // the same ditherer: nothing to load or render
+        setCurrentItem(current);
+        current->setSelected(true);
+    }
+    verticalScrollBar()->setValue(scroll);
+    viewport()->update();
 }
 
 void TreeWidget::showContextMenuSlot(const QPoint& pos) const {
@@ -69,8 +210,13 @@ void TreeWidget::treeWidgetItemChangedSlot(QTreeWidgetItem* item, int) {
 }
 
 void TreeWidget::setItemActive(const int index) {
-    /* Sets the specified ditherer as active and selected ditherer */
+    /* Sets the specified ditherer as active and selected ditherer; `index`: its place in the list as built */
     QTreeWidgetItem* item = topLevelItem(index);
+    for (int i = 0; i < topLevelItemCount(); i++) {  // favourites may have moved it
+        if (topLevelItem(i)->data(ITEM_DATA_COUNT, Qt::UserRole).toInt() == index) {
+            item = topLevelItem(i);
+        }
+    }
     item->setSelected(true);
     changeDitherer(item);
     setCurrentItem(item);
@@ -120,6 +266,8 @@ QTreeWidgetItem* TreeWidget::addTreeItem(const DitherType dt, const SubDitherTyp
     item->setData(ITEM_DATA_COUNT, Qt::UserRole, item_count);  // overall number of the ditherer
     item->setData(ITEM_DATA_DTYPE, Qt::UserRole, dt);          // dither type: e.g. error diffusion
     item->setData(ITEM_DATA_DSUBTYPE, Qt::UserRole, num);      // sub-type: e.g. floyd-steinberg
+    item->setData(0, ROLE_NATURAL_ROW, item_count);            // the same two, readable by the delegate
+    item->setData(0, ROLE_DITHER_ID, num);
     addTopLevelItem(item);
     item_count++;
     return item;

@@ -30,6 +30,14 @@ void Preferences::load(QSettings& settings) {
         clipboardFormat = "png";
     }
     recentFiles = settings.value("recent/files").toStringList().mid(0, MAX_RECENT_FILES);
+    favoriteDitherers.clear();
+    for (const QString& id : settings.value("favorites/ditherers").toStringList()) {
+        bool ok = false;
+        const int value = id.toInt(&ok);
+        if (ok && !favoriteDitherers.contains(value)) {
+            favoriteDitherers.append(value);
+        }
+    }
     screenPpi = settings.value("screen/ppi", defaults.screenPpi).toDouble();
     autoSuffix = settings.value("files/autoSuffix", defaults.autoSuffix).toBool();
     suffix = settings.value("files/suffix", defaults.suffix).toString();
@@ -57,6 +65,11 @@ void Preferences::save(QSettings& settings) const {
     settings.setValue("clipboard/content", static_cast<int>(clipboardContent));
     settings.setValue("clipboard/format", clipboardFormat);
     settings.setValue("recent/files", recentFiles);
+    QStringList favorites;
+    for (const int id : favoriteDitherers) {
+        favorites << QString::number(id);
+    }
+    settings.setValue("favorites/ditherers", favorites);
     settings.setValue("screen/ppi", screenPpi);
     settings.setValue("files/autoSuffix", autoSuffix);
     settings.setValue("files/suffix", suffix);

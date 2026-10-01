@@ -67,6 +67,8 @@ struct Preferences {
     QStringList recentFiles;
     static constexpr int MAX_RECENT_FILES = 5;
     void addRecentFile(const QString& path);
+    // favourite ditherers, mono and colour, as SubDitherType values (stable ids), in the order they were added
+    QList<int> favoriteDitherers;
     // screen
     double screenPpi = 0.0;
     // file names

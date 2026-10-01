@@ -28,8 +28,12 @@ SOURCES += \
     tst_palette.cpp \
     tst_preferences.cpp \
     tst_render.cpp \
+    tst_favorites.cpp \
     $$APP/preferences/preferences.cpp \
     $$APP/ui_elements/mouseeventfilter.cpp \
+    $$APP/ui_elements/favoritestar.cpp \
+    $$APP/treewidget.cpp \
+    $$APP/treewidgetdelegate.cpp \
     $$APP/color/colorspace.cpp \
     $$APP/palette/palettemodel.cpp \
     $$APP/palette/labpanel.cpp \
@@ -58,4 +62,5 @@ HEADERS += \
     $$APP/imagehash/imagehashcolor.h \
     $$APP/palette/labpanel.h \
     $$APP/palette/colourpickerdialog.h \
-    $$APP/ui_elements/mouseeventfilter.h
+    $$APP/ui_elements/mouseeventfilter.h \
+    $$APP/treewidget.h

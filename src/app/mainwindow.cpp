@@ -71,6 +71,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     setApplicationDefaults();
     expandColorComparisonArea(false);
     connectSignals();
+    setupFavoriteDitherers();        // stars in the ditherer lists, from the preferences
 }
 
 MainWindow::~MainWindow() {

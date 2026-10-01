@@ -2,6 +2,7 @@
 #include "export/filmwriter.h"
 #include "export/psdwriter.h"
 #include "viewport/renderglyphbutton.h"
+#include "treewidget.h"
 #include <QActionGroup>
 #include <QClipboard>
 #include <QInputDialog>
@@ -137,6 +138,17 @@ void MainWindow::setupPreferences() {
 void MainWindow::savePreferences() {
     QSettings settings = preferenceFile();
     preferences.save(settings);
+}
+
+void MainWindow::setupFavoriteDitherers() {
+    /* one list of ids in the preferences for both tabs: mono and colour ditherers have different SubDitherType values */
+    for (TreeWidget* tree : {ui->treeWidgetMono, ui->treeWidgetColor}) {
+        tree->setFavorites(preferences.favoriteDitherers);
+        connect(tree, &TreeWidget::favoritesChanged, this, [this]() {
+            preferences.favoriteDitherers = ui->treeWidgetMono->favorites() + ui->treeWidgetColor->favorites();
+            savePreferences();
+        });
+    }
 }
 
 void MainWindow::applyNavigation() {

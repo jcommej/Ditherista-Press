@@ -127,6 +127,8 @@ file ──► adoptNativeImage ── print size = pixels / file DPI (editable,
 | `mainwindow.cpp` | `ditherMonoInto` / `ditherColorInto` (dither any cache: preview or film), `renderFilm`, `saveFile` |
 | `viewport/graphicsview.cpp` | hold click / Space to show the original, scene item replacement without leaks |
 | `viewport/renderglyphbutton.*` | render control button (QPainter, 7×7 glyph matrix: ring = Auto, bars = Paused, breathing during every render, automatic ones included: `RenderGlyphActivity` guard in `reDither` when something is computed, and in Save / Copy), anchored to the viewport's lower right corner |
+| `ui_elements/favoritestar.*` | favourite star (7×7 pixel outline / filled star, 300 ms animation filling from the centre with a slight swell), `favoriteOrder`, `toggleFavorite` |
+| `treewidget.*` (+ delegate) | favourites in the ditherer lists: star left of the done dot, click on it never selects (not passed to the base press), rows reordered after the animation (`applyFavoriteOrder`: current item and scroll kept), thin line under the last favourite; the delegate finds the selected row by `ROLE_NATURAL_ROW`, not by row index |
 | `mainwindow_render.cpp` | render control: pause, held work (`renderDirty`, `sourceDirtyMono/Color`, `outputSizeDirty`), `renderPending` = one render, `requestOutputSize`, `renderBeforeExport` |
 
 `monoTarget` / `colorTarget` + `renderDpi` let the upstream ditherer functions render either the preview caches
@@ -186,6 +188,10 @@ or a short-lived full-resolution cache for export, without duplicating them.
   resample (`requestOutputSize`, every former `applyOutputSize` caller goes through it); the colour picker's live
   preview is off. Opening a picture renders anyway (stays paused). Save / Copy while changes wait render them
   first and stay paused. Ctrl+drag export takes the picture on screen, as always.
+- **Favourite ditherers** (user's mock-up `ditherista_favorite_star_demo.html`, star made a real five-pointed one):
+  favourites on top in the order added (not sorted), a removed one goes back to its place; no favourite = the list
+  as upstream. Stored in `preferences.ini` `favorites/ditherers` as SubDitherType values (one list for both tabs).
+  `setItemActive(n)` means the n-th ditherer as built, wherever it is shown.
 - Postponed by the user: dot shapes (maybe with other algorithms), histogram, dot cut-off / high-cut overlay.
 - Known open question: matrix smoothing for round dots / more grey levels at high DPI was proposed and
   postponed by the user ("je valide pour le moment").
@@ -212,6 +218,7 @@ or a short-lived full-resolution cache for export, without duplicating them.
 | — Palette editor (HEX, lock, delete, add, randomize, undo), live colour picker + CIELAB panel | done (`feature/palette-editor`, `fix/palette-tab-scroll`) |
 | 10 UI: navigation (zoom modes, drag pan, joystick, inertia, pinch, 1:1, Fit), Preferences window (colour management, preview quality, zoom/wheel, background, clipboard, file names, folders, calibration), Open Recent, Paste Image, Copy to Clipboard | done (`feature/navigation-preferences`) |
 | — Rename to Ditherista Press; render control (pause / render once) | to test (`feature/rename-press`, `feature/render-pause`) |
+| — Favourite ditherers (stars) | to test (`feature/favorite-ditherers`, from `feature/render-pause`) |
 
 ### Next objectives (as of 2026-10-01)
 
